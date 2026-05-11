@@ -10,7 +10,7 @@ const AURORA_LON   = -122.770;
 const DD_BASE      = 50;          // °F
 const DD_BIOFIX    = '04-01';     // April 1 each year
 const THRESHOLD_SINGLE = 5;       // moths/trap — action level
-const THRESHOLD_AVG    = 2.5;     // regional avg — caution level
+const THRESHOLD_AVG    = 5;       // regional avg — action level
 
 // Filbertworm phenology thresholds (DD base 50°F from April 1)
 const DD_FIRST_FLIGHT  = 610;
@@ -36,6 +36,7 @@ let leafletMap   = null;
 let markerGroup  = null;
 let heatLayer    = null;
 let mapMode      = 'markers';   // 'markers' | 'heat'
+let chartMode    = 'weekly';    // 'weekly' | 'rolling'
 let trapDetailChart = null;
 let mainChart    = null;
 let ddChart      = null;
@@ -142,15 +143,35 @@ function setText(id, val) {
 // MAIN CHART — regional weekly averages
 // ═════════════════════════════════════════════════════════════════════════
 
+function rollingAvg(data, win = 3) {
+  return data.map((_, i) => {
+    const slice = data.slice(Math.max(0, i - win + 1), i + 1);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+}
+
+window.setChartMode = function(mode) {
+  chartMode = mode;
+  document.getElementById('btn-weekly').classList.toggle('active', mode === 'weekly');
+  document.getElementById('btn-rolling').classList.toggle('active', mode === 'rolling');
+  if (mainChart) { mainChart.destroy(); mainChart = null; }
+  renderMainChart();
+};
+
 function renderMainChart() {
   const ctx = document.getElementById('main-chart');
   if (!ctx) return;
 
   const labels = SEASON_WEEKS.map(fmtDate);
 
+  const getRegionData = (regionId) => {
+    const weekly = SEASON_WEEKS.map(w => regionWeeklyAvg(regionId, w));
+    return chartMode === 'rolling' ? rollingAvg(weekly) : weekly;
+  };
+
   const datasets = REGIONS.map(region => ({
     label:            region.name,
-    data:             SEASON_WEEKS.map(w => regionWeeklyAvg(region.id, w)),
+    data:             getRegionData(region.id),
     borderColor:      region.color,
     backgroundColor:  region.color + '18',
     borderWidth:      2.5,
@@ -184,7 +205,7 @@ function renderMainChart() {
               borderDash: [6, 4],
               label: {
                 display: true,
-                content: 'Action threshold (2.5 avg)',
+                content: 'Action threshold (5 avg)',
                 position: 'end',
                 backgroundColor: '#C0392B',
                 color: 'white',
@@ -401,12 +422,26 @@ window.updateMapData = function() {
     const maxCount = Math.max(...allTraps.map(getCount), 1);
     const points = allTraps.map(t => [t.lat, t.lon, getCount(t) / maxCount]);
 
-    heatLayer = L.heatLayer(points, {
-      radius:  28,
-      blur:    22,
-      maxZoom: 14,
-      gradient: { 0.2: '#78C66A', 0.5: '#E8C547', 0.75: '#E84747', 1.0: '#8B0000' },
-    }).addTo(leafletMap);
+    if (typeof L.heatLayer === 'function') {
+      heatLayer = L.heatLayer(points, {
+        radius:  28,
+        blur:    22,
+        maxZoom: 14,
+        gradient: { 0.2: '#78C66A', 0.5: '#E8C547', 0.75: '#E84747', 1.0: '#8B0000' },
+      }).addTo(leafletMap);
+    } else {
+      // Fallback: translucent circles when heat plugin unavailable
+      const maxCount = Math.max(...allTraps.map(getCount), 1);
+      for (const t of allTraps) {
+        const intensity = getCount(t) / maxCount;
+        L.circle([t.lat, t.lon], {
+          radius: 500 + intensity * 800,
+          color: 'transparent',
+          fillColor: colorForCount(getCount(t)).hex,
+          fillOpacity: 0.15 + intensity * 0.35,
+        }).addTo(markerGroup);
+      }
+    }
   }
 };
 
@@ -516,9 +551,10 @@ async function initDegreeDayChart() {
   }
 
   // Build full-season projection: April 1 – Oct 31
-  const projected = buildSeasonProjection(biofixDate, actual);
+  const projected   = buildSeasonProjection(biofixDate, actual);
+  const typicalSeason = buildTypicalSeason(year);
 
-  renderDDChart(actual, projected, biofixDate);
+  renderDDChart(actual, projected, biofixDate, typicalSeason);
   updateDDStatusCard(actual, projected);
   document.getElementById('dd-chart-title').textContent =
     `${year} Degree Day Accumulation — ${dataNote}`;
@@ -553,6 +589,22 @@ async function fetchOpenMeteoDD(startDate, endDate) {
   });
 }
 
+// Build typical-season curve using only historical monthly DD averages
+function buildTypicalSeason(year) {
+  const biofixDate = `${year}-04-01`;
+  const endDate    = `${year}-10-31`;
+  const result = [];
+  let cumDD = 0;
+  const cur = new Date(biofixDate + 'T12:00:00');
+  while (cur.toISOString().split('T')[0] <= endDate) {
+    const month = cur.getMonth() + 1;
+    cumDD += HIST_MONTHLY_DD[month] ?? 0;
+    result.push({ date: cur.toISOString().split('T')[0], cumDD: parseFloat(cumDD.toFixed(1)) });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return result;
+}
+
 // Build full-season date series using actual data + historical-avg projection
 function buildSeasonProjection(biofixDate, actual) {
   const year     = parseInt(biofixDate.split('-')[0]);
@@ -577,7 +629,7 @@ function buildSeasonProjection(biofixDate, actual) {
   return all;
 }
 
-function renderDDChart(actual, allPoints, biofixDate) {
+function renderDDChart(actual, allPoints, biofixDate, typicalSeason = []) {
   const ctx = document.getElementById('dd-chart');
   if (!ctx) return;
 
@@ -586,6 +638,10 @@ function renderDDChart(actual, allPoints, biofixDate) {
 
   const actualData    = allPoints.map((d, i) => i < actualEnd ? d.cumDD : null);
   const projectedData = allPoints.map((d, i) => i >= actualEnd - 1 ? d.cumDD : null);
+
+  // Map typical season data to the same date indices as allPoints
+  const typicalMap = Object.fromEntries(typicalSeason.map(d => [d.date, d.cumDD]));
+  const typicalData = allPoints.map(d => typicalMap[d.date] ?? null);
 
   const today = new Date().toISOString().split('T')[0];
   const todayIdx = allPoints.findIndex(d => d.date >= today);
@@ -614,6 +670,17 @@ function renderDDChart(actual, allPoints, biofixDate) {
           borderColor:     '#2B6E3B',
           borderDash:      [6, 4],
           borderWidth:     2,
+          pointRadius:     0,
+          fill:            false,
+          tension:         0.2,
+          spanGaps:        false,
+        },
+        {
+          label:           'Typical Season (Hist. Avg)',
+          data:            typicalData,
+          borderColor:     '#9E9E9E',
+          borderDash:      [4, 6],
+          borderWidth:     1.5,
           pointRadius:     0,
           fill:            false,
           tension:         0.2,

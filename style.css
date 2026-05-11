@@ -86,8 +86,38 @@ code {
   gap: 32px;
 }
 
-.nav-logo { display: flex; align-items: center; flex-shrink: 0; }
+.nav-logo { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .nav-logo:hover { text-decoration: none; opacity: 0.9; }
+
+.nav-logo-img-wrap {
+  background: white;
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.nav-logo-img { height: 38px; width: auto; display: block; }
+
+.nav-logo-wordmark {
+  display: flex;
+  flex-direction: column;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--green-800);
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
+.nav-logo-location {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--green-500);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
 
 .nav-links {
   display: flex;
@@ -384,6 +414,60 @@ code {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* ── CHART CONTROLS ───────────────────────────────────── */
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.chart-mode-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.chart-mode-btn {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 5px 14px;
+  border: none;
+  background: var(--card-bg);
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.chart-mode-btn:not(:last-child) { border-right: 1px solid var(--border); }
+.chart-mode-btn:hover { background: var(--green-50); color: var(--green-700); }
+.chart-mode-btn.active { background: var(--green-700); color: white; }
+
+/* ── FOOTER LOGO ──────────────────────────────────────── */
+.footer-logo-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.footer-logo-img {
+  height: 36px;
+  width: auto;
+  background: white;
+  border-radius: 5px;
+  padding: 4px 8px;
+  display: block;
+}
+
+.footer-logo-text {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--green-200);
+  letter-spacing: 0.3px;
 }
 
 /* ── DEGREE DAY SECTION ───────────────────────────────── */
