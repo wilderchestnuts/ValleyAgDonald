@@ -72,8 +72,7 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
     </svg>
-    <span id="data-source-label">Displaying 2025 demo data — </span>
-    <a href="#resources" class="banner-link">connect your Google Sheet to show live data</a>
+    <span id="data-source-label">2025 season data · Willamette Valley · Donald Valley Agronomics scouting network</span>
   </div>
 </div>
 
@@ -82,7 +81,7 @@
   <div class="container">
     <div class="section-header">
       <h2>Season Overview</h2>
-      <p>Weekly average moth counts across all regions. Threshold action level: <strong>≥ 5 moths/trap/week</strong> regional average, or <strong>≥ 5</strong> in any single trap.</p>
+      <p>Weekly average moth counts across all regions. Spray action level: <strong>≥ 5 moths in any single trap</strong> in any single week. Contact your Valley Ag adviser for spray recommendations.</p>
     </div>
 
     <!-- Summary stat row -->
@@ -132,7 +131,7 @@
         <div class="chart-controls">
           <div class="chart-mode-toggle">
             <button class="chart-mode-btn active" id="btn-weekly" onclick="setChartMode('weekly')">Weekly</button>
-            <button class="chart-mode-btn" id="btn-rolling" onclick="setChartMode('rolling')">3-Week Avg</button>
+            <button class="chart-mode-btn" id="btn-rolling" onclick="setChartMode('rolling')">3-Week Sum</button>
           </div>
           <div class="chart-legend" id="main-legend"></div>
         </div>
@@ -177,7 +176,7 @@
           </div>
           <div class="dd-threshold-item" style="--col:#D44000">
             <span class="dd-dot"></span>
-            <strong>1,023 DD</strong> — Peak Egg Hatch · <em>Spray Window</em>
+            <strong>1,023 DD</strong> — Peak Egg Hatch
           </div>
           <div class="dd-threshold-item" style="--col:#8B2FC9">
             <span class="dd-dot"></span>
@@ -293,43 +292,42 @@
     <div class="resources-grid">
 
       <div class="resource-card">
-        <h4>Economic Thresholds</h4>
+        <h4>OSU Recommended Trap Thresholds</h4>
         <table class="threshold-table">
-          <thead><tr><th>Level</th><th>Catch</th><th>Action</th></tr></thead>
+          <thead><tr><th>Catch (any single trap)</th><th>Action</th></tr></thead>
           <tbody>
-            <tr class="row-green"><td>Low</td><td>&lt; 2.5 avg/trap/wk</td><td>Monitor, no spray</td></tr>
-            <tr class="row-amber"><td>Caution</td><td>2.5–5 avg/trap/wk</td><td>Scout, prepare</td></tr>
-            <tr class="row-red"><td>Action</td><td>&gt; 5 in any trap</td><td>Spray within 7–10 days</td></tr>
+            <tr class="row-green"><td>&lt; 5 moths/trap/week</td><td>Monitor — no spray needed</td></tr>
+            <tr class="row-red"><td>≥ 5 moths/trap/week</td><td>Contact your Valley Ag adviser</td></tr>
           </tbody>
         </table>
         <p class="resource-note">Source: OSU Extension / PNW Pest Management Handbook</p>
       </div>
 
       <div class="resource-card">
-        <h4>Trap Placement Guidelines</h4>
+        <h4>About This Service</h4>
         <ul>
-          <li>Delta trap baited with <em>C. latiferreana</em> pheromone lure</li>
-          <li>Hang in <strong>upper ⅓ of canopy</strong> — pheromone vapor is heavier than air</li>
-          <li>4 traps / first 10 ac; +1 trap per 4 ac beyond 10 ac</li>
-          <li>Replace lure every <strong>30 days</strong></li>
-          <li>Check weekly; record total moths per trap</li>
-          <li>Set traps by mid-to-late May to catch first flights</li>
+          <li>Traps are placed and checked weekly by Valley Agronomics scouts</li>
+          <li>Delta traps baited with <em>C. latiferreana</em> pheromone lure</li>
+          <li>Data is updated weekly throughout the flight season (May–August)</li>
+          <li>Spray recommendations are sent via text message each week</li>
+          <li>Contact your Valley Ag adviser with any questions</li>
         </ul>
       </div>
 
       <div class="resource-card">
-        <h4>Spray Timing</h4>
+        <h4>About the Degree Day Model</h4>
         <ul>
-          <li>Target: eggs and wandering larvae <strong>before nut entry</strong></li>
-          <li>Spray ~7–10 days after first large flight catch</li>
-          <li>Or at <strong>1,023 DD</strong> from April 1 biofix (peak egg hatch)</li>
-          <li>Mating disruption: "trap shutdown" = dispensers working</li>
-          <li>Consult your certified crop adviser for product selection</li>
+          <li>Base temperature <strong>50°F</strong>, biofix <strong>April 1</strong></li>
+          <li>Heat accumulation predicts filbertworm flight timing</li>
+          <li><strong>610 DD</strong> — first adult moths typically appear</li>
+          <li><strong>1,023 DD</strong> — peak egg hatch, larvae most vulnerable</li>
+          <li><strong>1,188 DD</strong> — peak adult emergence</li>
+          <li>Model data from <a href="https://uspest.org/dd/model_app?spp=cl3" target="_blank" rel="noopener">OSU/USPest.org</a></li>
         </ul>
       </div>
 
       <div class="resource-card">
-        <h4>Data & Links</h4>
+        <h4>Reference Links</h4>
         <ul class="link-list">
           <li><a href="https://uspest.org/dd/model_app?spp=cl3" target="_blank" rel="noopener">USPest.org — Filbertworm Model (cl3)</a></li>
           <li><a href="https://uspest.org/OR/" target="_blank" rel="noopener">OSU/IPPC Oregon DD Maps</a></li>
@@ -338,15 +336,6 @@
           <li><a href="https://extension.oregonstate.edu/collection/hazelnut-ipm" target="_blank" rel="noopener">OSU Extension: Hazelnut IPM</a></li>
           <li><a href="https://www.usbr.gov/pn/agrimet/agrimetmap/araoda.html" target="_blank" rel="noopener">ARAO Aurora AgriMet Station</a></li>
         </ul>
-        <div class="google-sheet-config" id="sheet-config">
-          <h5>Connect Your Google Sheet</h5>
-          <p>Publish your trap data sheet as CSV and paste the URL below. The site will load live data automatically on each visit.</p>
-          <div class="sheet-input-row">
-            <input type="text" id="sheet-url-input" placeholder="https://docs.google.com/spreadsheets/d/…/export?format=csv" />
-            <button onclick="connectSheet()" class="btn-primary btn-sm">Connect</button>
-          </div>
-          <p class="sheet-note">Expected columns: <code>trap_id, region, region_name, grower, lat, lon, date, count</code></p>
-        </div>
       </div>
 
     </div>
@@ -358,7 +347,6 @@
   <div class="container footer-inner">
     <div class="footer-brand">
       <div class="footer-logo-wrap">
-        <img src="Valley-Ag-Logo-Web-Lg.png" alt="Valley Ag" class="footer-logo-img" />
         <span class="footer-logo-text">Valley Agronomics Donald</span>
       </div>
       <p>Precision agronomy for Willamette Valley hazelnut growers.</p>

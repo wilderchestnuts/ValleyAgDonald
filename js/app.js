@@ -127,10 +127,9 @@ function renderDashboardStats() {
   setText('hstat-traps', allTraps.length);
   setText('hstat-peak',  fmtDate(SEASON_WEEKS[peakWkIdx]));
 
-  // Update banner to reflect real vs demo data
   const banner = document.getElementById('data-source-label');
-  if (banner && !window.SHEET_CSV_URL) {
-    banner.textContent = `Displaying 2025 season data (${allTraps.length} traps) — `;
+  if (banner) {
+    banner.textContent = `2025 season data · ${allTraps.length} trap stations · Willamette Valley · Donald Valley Agronomics scouting network`;
   }
 }
 
@@ -143,10 +142,10 @@ function setText(id, val) {
 // MAIN CHART — regional weekly averages
 // ═════════════════════════════════════════════════════════════════════════
 
-function rollingAvg(data, win = 3) {
+function rollingSum(data, win = 3) {
   return data.map((_, i) => {
     const slice = data.slice(Math.max(0, i - win + 1), i + 1);
-    return slice.reduce((a, b) => a + b, 0) / slice.length;
+    return slice.reduce((a, b) => a + b, 0);
   });
 }
 
@@ -163,10 +162,11 @@ function renderMainChart() {
   if (!ctx) return;
 
   const labels = SEASON_WEEKS.map(fmtDate);
+  const isSum  = chartMode === 'rolling';
 
   const getRegionData = (regionId) => {
     const weekly = SEASON_WEEKS.map(w => regionWeeklyAvg(regionId, w));
-    return chartMode === 'rolling' ? rollingAvg(weekly) : weekly;
+    return isSum ? rollingSum(weekly) : weekly;
   };
 
   const datasets = REGIONS.map(region => ({
@@ -191,28 +191,9 @@ function renderMainChart() {
         legend:  { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} moths/trap`,
-          },
-        },
-        annotation: {
-          annotations: {
-            threshold: {
-              type: 'line',
-              yMin: THRESHOLD_AVG,
-              yMax: THRESHOLD_AVG,
-              borderColor: '#C0392B',
-              borderWidth: 1.5,
-              borderDash: [6, 4],
-              label: {
-                display: true,
-                content: 'Action threshold (5 avg)',
-                position: 'end',
-                backgroundColor: '#C0392B',
-                color: 'white',
-                font: { size: 10, weight: '600' },
-                padding: { x: 6, y: 3 },
-              },
-            },
+            label: ctx => isSum
+              ? ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} moths/trap (3-wk sum)`
+              : ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} moths/trap/wk`,
           },
         },
       },
@@ -223,7 +204,7 @@ function renderMainChart() {
         },
         y: {
           beginAtZero: true,
-          title: { display: true, text: 'Avg moths / trap / week', font: { size: 11 } },
+          title: { display: true, text: isSum ? 'Moths / trap (3-week sum)' : 'Avg moths / trap / week', font: { size: 11 } },
           grid: { color: 'rgba(0,0,0,0.06)' },
           ticks: { font: { size: 11 } },
         },
@@ -262,14 +243,8 @@ function renderRegionCards() {
       regionWeeklyAvg(region.id, w) > regionWeeklyAvg(region.id, SEASON_WEEKS[best]) ? i : best, 0);
     const peakDate  = fmtDate(SEASON_WEEKS[peakWkIdx]);
 
-    let badgeClass, badgeText;
-    if (peakAvg >= THRESHOLD_SINGLE) {
-      badgeClass = 'alert'; badgeText = 'High Pressure';
-    } else if (peakAvg >= THRESHOLD_AVG) {
-      badgeClass = 'warn'; badgeText = 'At Threshold';
-    } else {
-      badgeClass = 'ok'; badgeText = 'Below Threshold';
-    }
+    const badgeClass = peakAvg >= THRESHOLD_SINGLE ? 'alert' : 'ok';
+    const badgeText  = peakAvg >= THRESHOLD_SINGLE ? 'Action Level Reached' : 'Below Threshold';
 
     const card = document.createElement('div');
     card.className = 'region-card';
@@ -332,17 +307,6 @@ function renderSparkline(canvasId, region) {
       plugins: {
         legend:     { display: false },
         tooltip:    { enabled: false },
-        annotation: {
-          annotations: {
-            thr: {
-              type: 'line',
-              yMin: THRESHOLD_AVG, yMax: THRESHOLD_AVG,
-              borderColor: '#C0392B88',
-              borderWidth: 1,
-              borderDash: [4, 3],
-            },
-          },
-        },
       },
       scales: {
         x: { display: false },
@@ -702,6 +666,7 @@ function renderDDChart(actual, allPoints, biofixDate, typicalSeason = []) {
           annotations: {
             ff: ddThreshLine(allPoints, DD_FIRST_FLIGHT, '#E8A000', 'First Flight (610 DD)'),
             eh: ddThreshLine(allPoints, DD_EGG_HATCH,   '#D44000', 'Peak Egg Hatch (1,023 DD)'),
+
             pa: ddThreshLine(allPoints, DD_PEAK_ADULT,  '#8B2FC9', 'Peak Adult (1,188 DD)'),
             ...(todayIdx > 0 ? {
               now: {
