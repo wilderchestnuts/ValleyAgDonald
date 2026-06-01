@@ -4,11 +4,11 @@
 
 // ── Region definitions ────────────────────────────────────────────────────────
 const REGIONS = [
-  { id: '1', name: 'Region 1', lat: 45.215, lon: -122.800, spread: 0.07, color: '#2196F3' },
-  { id: '2', name: 'Region 2', lat: 45.305, lon: -123.005, spread: 0.10, color: '#E53935' },
-  { id: '3', name: 'Region 3', lat: 45.225, lon: -122.835, spread: 0.065, color: '#43A047' },
-  { id: '4', name: 'Region 4', lat: 44.965, lon: -123.020, spread: 0.09, color: '#FB8C00' },
-  { id: '5', name: 'Region 5', lat: 45.390, lon: -122.910, spread: 0.08, color: '#8E24AA' },
+  { id: '1', name: 'Zone 1', lat: 45.215, lon: -122.800, spread: 0.07, color: '#2196F3' },
+  { id: '2', name: 'Zone 2', lat: 45.305, lon: -123.005, spread: 0.10, color: '#E53935' },
+  { id: '3', name: 'Zone 3', lat: 45.225, lon: -122.835, spread: 0.065, color: '#43A047' },
+  { id: '4', name: 'Zone 4', lat: 44.965, lon: -123.020, spread: 0.09, color: '#FB8C00' },
+  { id: '5', name: 'Zone 5', lat: 45.390, lon: -122.910, spread: 0.08, color: '#8E24AA' },
 ];
 
 // Populated from Excel uploads; starts empty

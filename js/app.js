@@ -272,7 +272,7 @@ function renderRegionCards() {
       <div class="region-card-header">
         <div class="region-name-row">
           <span class="region-color-dot" style="background:${region.color}"></span>
-          <span class="region-name">Region ${region.id} — ${region.name}</span>
+          <span class="region-name">${region.name}</span>
         </div>
         <span class="region-badge ${badgeClass}">${badgeText}</span>
       </div>

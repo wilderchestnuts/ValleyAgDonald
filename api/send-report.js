@@ -77,7 +77,7 @@ module.exports = async function handler(req, res) {
           <div style="background:#f7faf7;padding:24px 32px;border-radius:0 0 12px 12px;border:1px solid #d8e9db">
             <p style="margin:0 0 12px">Please find the weekly filbertworm trap report attached.</p>
             <ul style="margin:0 0 16px;padding-left:20px;color:#3d5444;font-size:0.92rem">
-              <li>PDF — landscape A4, full season data</li>
+              <li>PDF — portrait A4, full season data</li>
               <li>JPEG — optimized for mobile viewing</li>
             </ul>
             <p style="margin:0;font-size:0.82rem;color:#6b7f72">
