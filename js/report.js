@@ -71,14 +71,16 @@ window.sendZoneReport = async function(regionId) {
   const region = REGIONS.find(r => r.id === regionId);
   if (!region) throw new Error(`Unknown region ${regionId}`);
 
-  const canvas  = buildReportCanvas(regionId, region);
-  const jpegB64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1];
+  const canvas      = buildReportCanvas(regionId, region);
+  // Use JPEG for both attachments — 10-20× smaller than PNG, keeps payload under Vercel's 4.5 MB limit
+  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  const jpegB64     = jpegDataUrl.split(',')[1];
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pgW = pdf.internal.pageSize.getWidth();
   const pgH = pdf.internal.pageSize.getHeight();
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pgW, pgH);
+  pdf.addImage(jpegDataUrl, 'JPEG', 0, 0, pgW, pgH);
   const pdfB64 = pdf.output('datauristring').split(',')[1];
 
   const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
