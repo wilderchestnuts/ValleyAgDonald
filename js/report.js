@@ -1,16 +1,20 @@
 /* ═══════════════════════════════════════════════════════
    report.js — Portrait zone PDF/JPEG report generator
-   Canvas 1200×1748 (A4 portrait @ ~144 dpi)
-   Sections: Header → Stats → Map (CartoDB) → Trend → GDD → Footer
+   Canvas 1200×1748
+   Header → Stats → Map → Trend → GDD → Zone Summary → Footer
    ═══════════════════════════════════════════════════════ */
 
 'use strict';
 
 window._currentDD = 0;
 
-const RPT_W   = 1200;
-const RPT_H   = 1748;
-const RPT_PAD = 0;    // panels go edge-to-edge
+const RPT_W = 1200;
+const RPT_H = 1748;
+
+// Layout y positions (gap = 8px between sections)
+// Header:    0–90    Stats: 98–174   Map:  182–798
+// Trend: 806–1146   GDD: 1154–1544  Zone: 1552–1692
+// Footer: 1700–1748
 
 // ── jsPDF loader ─────────────────────────────────────────────────────────────
 let _jsPDFLoaded = false;
@@ -104,7 +108,7 @@ window.sendZoneReport = async function(regionId) {
   }
 };
 
-// ── Image loader helper ───────────────────────────────────────────────────────
+// ── Image loader ──────────────────────────────────────────────────────────────
 function loadImage(src) {
   return new Promise(resolve => {
     const img = new Image();
@@ -116,13 +120,6 @@ function loadImage(src) {
 }
 
 // ── Canvas builder ────────────────────────────────────────────────────────────
-// Layout (y positions):
-//   Header   0–90       (h=90)
-//   Stats    98–174     (h=76)
-//   Map      182–812    (h=630)
-//   Trend    820–1180   (h=360)
-//   GDD      1188–1680  (h=492)
-//   Footer   1688–1748  (h=60)
 async function buildReportCanvas(regionId, region) {
   const cvs = document.createElement('canvas');
   cvs.width  = RPT_W;
@@ -136,9 +133,10 @@ async function buildReportCanvas(regionId, region) {
 
   drawHeader(ctx, regionId, region, logoImg);
   drawStatRow(ctx, regionId, 0, 98, RPT_W, 76);
-  await drawMapPanel(ctx, regionId, 0, 182, RPT_W, 630);
-  drawTrendPanel(ctx, regionId, region, 0, 820, RPT_W, 360);
-  drawGDDPanel(ctx, 0, 1188, RPT_W, 492);
+  await drawMapPanel(ctx, regionId, 0, 182, RPT_W, 616);
+  drawTrendPanel(ctx, regionId, region, 0, 806, RPT_W, 340);
+  drawGDDPanel(ctx, 0, 1154, RPT_W, 390);
+  drawZoneDataPanel(ctx, 0, 1552, RPT_W, 140);
   drawFooter(ctx);
 
   return cvs;
@@ -150,7 +148,6 @@ async function buildReportCanvas(regionId, region) {
 function drawHeader(ctx, regionId, region, logoImg) {
   ctx.fillStyle = '#1A3D23';
   ctx.fillRect(0, 0, RPT_W, 86);
-
   ctx.fillStyle = region.color;
   ctx.fillRect(0, 86, RPT_W, 4);
 
@@ -160,9 +157,13 @@ function drawHeader(ctx, regionId, region, logoImg) {
     const maxH = 62, maxW = 190;
     const scale = Math.min(maxH / logoImg.height, maxW / logoImg.width);
     const lw = logoImg.width * scale, lh = logoImg.height * scale;
-    const lx = 16, ly = (86 - lh) / 2;
+    const lx = 14, ly = Math.round((86 - lh) / 2);
+    // White background behind logo
+    ctx.fillStyle = 'white';
+    rrect(ctx, lx - 6, ly - 5, lw + 12, lh + 10, 6);
+    ctx.fill();
     ctx.drawImage(logoImg, lx, ly, lw, lh);
-    textX = lx + lw + 18;
+    textX = lx + lw + 20;
   }
 
   ctx.fillStyle = 'white';
@@ -179,20 +180,22 @@ function drawHeader(ctx, regionId, region, logoImg) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// STAT ROW — 4 boxes
+// STAT ROW — 4 boxes: Traps | This Week Avg | Season Peak | Highest Count
 // ═════════════════════════════════════════════════════════════════════════════
 function drawStatRow(ctx, regionId, x, y, w, h) {
-  const traps     = regionTraps(regionId);
-  const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
-  const latestAvg = regionWeeklyAvg(regionId, latestWk);
-  const peakAvg   = regionPeakAvg(regionId);
-  const cumDD     = window._currentDD || 0;
+  const traps       = regionTraps(regionId);
+  const latestWk    = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
+  const latestAvg   = regionWeeklyAvg(regionId, latestWk);
+  const peakAvg     = regionPeakAvg(regionId);
+  const highestCount = traps.length
+    ? Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0)
+    : 0;
 
   const boxes = [
-    { label: 'Traps Monitored', value: traps.length.toString(),         color: '#2B6E3B' },
-    { label: 'This Week Avg',   value: fmtCount(latestAvg) + ' / trap', color: '#2B6E3B' },
-    { label: 'Season Peak Avg', value: fmtCount(peakAvg)  + ' / trap',  color: peakAvg >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
-    { label: 'DD Accumulated',  value: Math.round(cumDD) + ' DD',        color: '#1976D2' },
+    { label: 'Traps Monitored', value: traps.length.toString(),           color: '#2B6E3B' },
+    { label: 'This Week Avg',   value: fmtCount(latestAvg) + ' / trap',   color: '#2B6E3B' },
+    { label: 'Season Peak Avg', value: fmtCount(peakAvg)   + ' / trap',   color: peakAvg       >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
+    { label: 'Highest Count',   value: fmtCount(highestCount) + ' moths', color: highestCount  >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
   ];
 
   const gap  = 8;
@@ -201,11 +204,9 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
   boxes.forEach((box, i) => {
     const bx = x + i * (boxW + gap);
     drawCard(ctx, bx, y, boxW, h, 6);
-
     ctx.fillStyle = box.color;
     ctx.font      = 'bold 30px system-ui, sans-serif';
     ctx.fillText(box.value, bx + 16, y + 46);
-
     ctx.fillStyle = '#6B7F72';
     ctx.font      = '13px system-ui, sans-serif';
     ctx.fillText(box.label, bx + 16, y + 65);
@@ -214,6 +215,7 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MAP PANEL — CartoDB Positron basemap + trap dots
+// Panel title font ~24px → title bar = 48px, map area starts at y+48
 // ═════════════════════════════════════════════════════════════════════════════
 async function drawMapPanel(ctx, regionId, x, y, w, h) {
   drawCard(ctx, x, y, w, h, 0);
@@ -222,28 +224,22 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
   const traps    = regionTraps(regionId).filter(t => t.lat && t.lon);
   const latestWk = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
 
-  const mx = x + 8, my = y + 36, mw = w - 16, mh = h - 44 - 28;
+  // Map drawing area (48px title bar, 30px legend row at bottom)
+  const mx = x + 8, my = y + 48, mw = w - 16, mh = h - 48 - 30;
 
   if (!traps.length) {
-    ctx.fillStyle = '#EDF2EF';
-    ctx.fillRect(mx, my, mw, mh);
-    ctx.fillStyle = '#9E9E9E';
-    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillStyle = '#EDF2EF'; ctx.fillRect(mx, my, mw, mh);
+    ctx.fillStyle = '#9E9E9E'; ctx.font = '14px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('No trap location data', mx + mw / 2, my + mh / 2);
-    ctx.textAlign = 'left';
-    return;
+    ctx.textAlign = 'left'; return;
   }
 
   const lats = traps.map(t => t.lat), lons = traps.map(t => t.lon);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-
-  const latSpan = maxLat - minLat || 0.02;
-  const lonSpan = maxLon - minLon || 0.02;
-  const latPad  = latSpan * 0.28 + 0.010;
-  const lonPad  = lonSpan * 0.28 + 0.010;
-
+  const latSpan = maxLat - minLat || 0.02, lonSpan = maxLon - minLon || 0.02;
+  const latPad  = latSpan * 0.28 + 0.010, lonPad = lonSpan * 0.28 + 0.010;
   const vMinLat = minLat - latPad, vMaxLat = maxLat + latPad;
   const vMinLon = minLon - lonPad, vMaxLon = maxLon + lonPad;
 
@@ -257,7 +253,6 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
 
   const ftx0 = lonToTileX(vMinLon, zoom), ftx1 = lonToTileX(vMaxLon, zoom);
   const fty0 = latToTileY(vMaxLat, zoom), fty1 = latToTileY(vMinLat, zoom);
-
   const tx0 = Math.floor(ftx0), tx1 = Math.ceil(ftx1);
   const ty0 = Math.floor(fty0), ty1 = Math.ceil(fty1);
 
@@ -268,7 +263,7 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
   tctx.fillStyle = '#E8EFF5';
   tctx.fillRect(0, 0, tc.width, tc.height);
 
-  // CartoDB Positron — clean light gray, roads/rivers/towns, no distracting color
+  // CartoDB Positron — minimal light basemap, no distracting color fills
   const subs  = ['a', 'b', 'c', 'd'];
   const loads = [];
   for (let tx = tx0; tx < tx1; tx++) {
@@ -285,44 +280,35 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
 
   const vpPixX = (ftx0 - tx0) * TILE, vpPixY = (fty0 - ty0) * TILE;
   const vpPixW = (ftx1 - ftx0) * TILE, vpPixH = (fty1 - fty0) * TILE;
-
-  const scale = Math.min(mw / vpPixW, mh / vpPixH);
-  const dstW  = vpPixW * scale, dstH = vpPixH * scale;
-  const dstX  = mx + (mw - dstW) / 2;
-  const dstY  = my + (mh - dstH) / 2;
+  const scale  = Math.min(mw / vpPixW, mh / vpPixH);
+  const dstW   = vpPixW * scale, dstH = vpPixH * scale;
+  const dstX   = mx + (mw - dstW) / 2, dstY = my + (mh - dstH) / 2;
 
   if (!tainted) {
     ctx.drawImage(tc, vpPixX, vpPixY, vpPixW, vpPixH, dstX, dstY, dstW, dstH);
-    const attrW = 230, attrH = 17;
+    const attrW = 236, attrH = 17;
     ctx.fillStyle = 'rgba(255,255,255,0.82)';
     ctx.fillRect(dstX + dstW - attrW, dstY + dstH - attrH, attrW, attrH);
-    ctx.fillStyle = '#555';
-    ctx.font = '9px system-ui, sans-serif';
+    ctx.fillStyle = '#555'; ctx.font = '9px system-ui, sans-serif';
     ctx.fillText('© OpenStreetMap · CartoDB', dstX + dstW - attrW + 4, dstY + dstH - 4);
   } else {
-    ctx.fillStyle = '#E8EFF5';
-    ctx.fillRect(dstX, dstY, dstW, dstH);
-    ctx.fillStyle = '#9E9E9E';
-    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillStyle = '#E8EFF5'; ctx.fillRect(dstX, dstY, dstW, dstH);
+    ctx.fillStyle = '#9E9E9E'; ctx.font = '12px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Map tiles unavailable', dstX + dstW / 2, dstY + dstH / 2);
     ctx.textAlign = 'left';
   }
-
-  ctx.strokeStyle = '#BCC8BE';
-  ctx.lineWidth   = 1;
+  ctx.strokeStyle = '#BCC8BE'; ctx.lineWidth = 1;
   ctx.strokeRect(dstX, dstY, dstW, dstH);
 
-  const geoToPx = (lat, lon) => {
-    const relX = (lonToTileX(lon, zoom) - ftx0) / (ftx1 - ftx0);
-    const relY = (latToTileY(lat, zoom) - fty0) / (fty1 - fty0);
-    return { x: dstX + relX * dstW, y: dstY + relY * dstH };
-  };
+  const geoToPx = (lat, lon) => ({
+    x: dstX + (lonToTileX(lon, zoom) - ftx0) / (ftx1 - ftx0) * dstW,
+    y: dstY + (latToTileY(lat, zoom) - fty0) / (fty1 - fty0) * dstH,
+  });
 
+  // Clip trap dots to map image bounds
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(dstX, dstY, dstW, dstH);
-  ctx.clip();
+  ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
 
   for (const trap of traps) {
     const { x: px, y: py } = geoToPx(trap.lat, trap.lon);
@@ -330,69 +316,54 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
     const col   = colorForCount(count);
     const r     = 12;
 
-    // Dark outer ring for visibility on any basemap
-    ctx.beginPath();
-    ctx.arc(px, py, r + 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, r + 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
 
-    ctx.beginPath();
-    ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = col.hex;
-    ctx.fill();
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = col.hex; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
 
-    ctx.fillStyle  = 'white';
-    ctx.font       = 'bold 10px system-ui, sans-serif';
-    ctx.textAlign  = 'center';
+    ctx.fillStyle = 'white'; ctx.font = 'bold 10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
     ctx.fillText(fmtCount(count), px, py + 4);
   }
   ctx.restore();
   ctx.textAlign = 'left';
 
-  // Legend row
+  // Legend
   const legendItems = [
     { label: '0',           color: '#78C66A' },
     { label: '1–2',         color: '#E8C547' },
     { label: '3–4',         color: '#E88C47' },
     { label: '≥5 (action)', color: '#E84747' },
   ];
-  let lx = x + 18;
-  const ly = y + h - 17;
+  let lx = x + 20;
+  const ly = y + h - 16;
   ctx.font = '13px system-ui, sans-serif';
   for (const li of legendItems) {
-    ctx.beginPath();
-    ctx.arc(lx + 7, ly, 6, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(lx + 7, ly, 5, 0, Math.PI * 2);
-    ctx.fillStyle = li.color;
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(lx + 7, ly, 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(lx + 7, ly, 5, 0, Math.PI * 2);
+    ctx.fillStyle = li.color; ctx.fill();
     ctx.fillStyle = '#4A5E50';
     ctx.fillText(li.label, lx + 17, ly + 5);
-    lx += 116;
+    lx += 120;
   }
 }
 
-// Mercator tile coordinate helpers
-function lonToTileX(lon, zoom) {
-  return (lon + 180) / 360 * (1 << zoom);
-}
+// Mercator tile helpers
+function lonToTileX(lon, zoom) { return (lon + 180) / 360 * (1 << zoom); }
 function latToTileY(lat, zoom) {
   const rad = lat * Math.PI / 180;
   return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * (1 << zoom);
 }
-
 function loadTileImg(url, tctx, px, py) {
   return new Promise(resolve => {
-    const img       = new Image();
+    const img = new Image();
     img.crossOrigin = 'anonymous';
-    const timer     = setTimeout(resolve, 5000);
-    img.onload  = () => { clearTimeout(timer); tctx.drawImage(img, px, py); resolve(); };
-    img.onerror = () => { clearTimeout(timer); resolve(); };
+    const t = setTimeout(resolve, 5000);
+    img.onload  = () => { clearTimeout(t); tctx.drawImage(img, px, py); resolve(); };
+    img.onerror = () => { clearTimeout(t); resolve(); };
     img.src = url;
   });
 }
@@ -404,8 +375,8 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
   drawCard(ctx, x, y, w, h, 0);
   panelTitle(ctx, `Zone ${regionId} — Season Trap Catch`, x, y, w);
 
-  const traps   = regionTraps(regionId);
-  const n       = SEASON_WEEKS.length;
+  const traps = regionTraps(regionId);
+  const n     = SEASON_WEEKS.length;
 
   const avgData = SEASON_WEEKS.map(wk => regionWeeklyAvg(regionId, wk));
   const maxData = SEASON_WEEKS.map(wk =>
@@ -414,7 +385,7 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
 
   const yMax = Math.max(...avgData, ...maxData, THRESHOLD_SINGLE + 1) * 1.15;
 
-  const padL = 58, padR = 24, padT = 46, padB = 50;
+  const padL = 60, padR = 24, padT = 52, padB = 50;
   const cx = x + padL, cy = y + padT;
   const cw = w - padL - padR, ch = h - padT - padB;
 
@@ -423,57 +394,40 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
 
   // Grid + Y labels
   for (let i = 0; i <= 4; i++) {
-    const gy  = cy + (i / 4) * ch;
-    const val = ((1 - i / 4) * yMax).toFixed(1);
+    const gy = cy + (i / 4) * ch;
     ctx.strokeStyle = '#EEEEEE'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(cx + cw, gy); ctx.stroke();
-    ctx.fillStyle   = '#AAAAAA';
-    ctx.font        = '12px system-ui, sans-serif';
-    ctx.textAlign   = 'right';
-    ctx.fillText(val, cx - 6, gy + 4);
+    ctx.fillStyle = '#AAAAAA'; ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(((1 - i / 4) * yMax).toFixed(1), cx - 6, gy + 4);
   }
   ctx.textAlign = 'left';
 
-  // Y-axis title
   ctx.save();
-  ctx.translate(x + 14, cy + ch / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#9E9E9E';
-  ctx.font      = '12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
+  ctx.translate(x + 14, cy + ch / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#9E9E9E'; ctx.font = '12px system-ui, sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('Moths / trap / week', 0, 0);
-  ctx.restore();
-  ctx.textAlign = 'left';
+  ctx.restore(); ctx.textAlign = 'left';
 
   // Threshold line
   const thrY = toY(THRESHOLD_SINGLE);
   ctx.beginPath(); ctx.setLineDash([6, 4]);
   ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 1.5;
-  ctx.moveTo(cx, thrY); ctx.lineTo(cx + cw, thrY); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.moveTo(cx, thrY); ctx.lineTo(cx + cw, thrY); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#C0392B'; ctx.font = 'bold 11px system-ui, sans-serif';
   ctx.fillText('Action level (5)', cx + 6, thrY - 5);
 
   if (!n) return;
 
-  // Area fill for avg
+  // Area + avg line
   ctx.beginPath();
-  avgData.forEach((v, i) => {
-    const [px, py] = [toX(i), toY(v)];
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  });
+  avgData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
   ctx.lineTo(toX(n - 1), cy + ch); ctx.lineTo(cx, cy + ch); ctx.closePath();
   ctx.fillStyle = region.color + '22'; ctx.fill();
 
-  // Avg line
   ctx.beginPath();
-  avgData.forEach((v, i) => {
-    const [px, py] = [toX(i), toY(v)];
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  });
+  avgData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
   ctx.strokeStyle = region.color; ctx.lineWidth = 2.5; ctx.stroke();
-
-  // Avg points
   avgData.forEach((v, i) => {
     ctx.beginPath(); ctx.arc(toX(i), toY(v), 4.5, 0, Math.PI * 2);
     ctx.fillStyle = region.color; ctx.fill();
@@ -481,19 +435,14 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
 
   // Max line (dashed orange)
   ctx.beginPath(); ctx.setLineDash([5, 4]);
-  maxData.forEach((v, i) => {
-    const [px, py] = [toX(i), toY(v)];
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-  });
+  maxData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
   ctx.strokeStyle = '#E88C47'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-
-  // Max points
   maxData.forEach((v, i) => {
     ctx.beginPath(); ctx.arc(toX(i), toY(v), 4, 0, Math.PI * 2);
     ctx.fillStyle = '#E88C47'; ctx.fill();
   });
 
-  // X-axis labels (up to 8 evenly spaced)
+  // X labels
   const step = Math.max(1, Math.ceil(n / 8));
   ctx.fillStyle = '#9E9E9E'; ctx.font = '12px system-ui, sans-serif';
   SEASON_WEEKS.forEach((wk, i) => {
@@ -512,29 +461,31 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
   ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 28, liy - 4); ctx.stroke();
   ctx.beginPath(); ctx.arc(lx + 14, liy - 4, 4.5, 0, Math.PI * 2);
   ctx.fillStyle = region.color; ctx.fill();
-  ctx.fillStyle = '#444';
-  ctx.fillText('Zone average (moths/trap/wk)', lx + 34, liy + 1);
-  lx += 258;
+  ctx.fillStyle = '#444'; ctx.fillText('Zone average (moths/trap/wk)', lx + 34, liy + 1); lx += 262;
 
   ctx.setLineDash([5, 4]); ctx.strokeStyle = '#E88C47'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 28, liy - 4); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 28, liy - 4); ctx.stroke(); ctx.setLineDash([]);
   ctx.beginPath(); ctx.arc(lx + 14, liy - 4, 4, 0, Math.PI * 2);
   ctx.fillStyle = '#E88C47'; ctx.fill();
-  ctx.fillStyle = '#444';
-  ctx.fillText('Highest single trap', lx + 34, liy + 1);
+  ctx.fillStyle = '#444'; ctx.fillText('Highest single trap', lx + 34, liy + 1);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // GDD ACCUMULATION CHART
+// Title includes current DD value (moved from stats row)
 // ═════════════════════════════════════════════════════════════════════════════
 function drawGDDPanel(ctx, x, y, w, h) {
-  drawCard(ctx, x, y, w, h, 0);
-  panelTitle(ctx, 'Growing Degree Day Accumulation (base 50°F · Biofix April 1) — Aurora, OR', x, y, w);
-
+  const cumDD     = window._currentDD || 0;
   const actual    = window._ddActual    || [];
   const projected = window._ddProjected || [];
   const typical   = window._ddTypical   || [];
+
+  drawCard(ctx, x, y, w, h, 0);
+  panelTitle(
+    ctx,
+    `Growing Degree Day Accumulation — base 50°F  ·  ${Math.round(cumDD)} DD accumulated this season`,
+    x, y, w
+  );
 
   if (!projected.length) {
     ctx.fillStyle = '#9E9E9E'; ctx.font = '13px system-ui, sans-serif';
@@ -543,7 +494,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
     ctx.textAlign = 'left'; return;
   }
 
-  const padL = 62, padR = 28, padT = 48, padB = 54;
+  const padL = 64, padR = 28, padT = 54, padB = 54;
   const cx = x + padL, cy = y + padT;
   const cw = w - padL - padR, ch = h - padT - padB;
 
@@ -560,21 +511,16 @@ function drawGDDPanel(ctx, x, y, w, h) {
     ctx.strokeStyle = '#EEEEEE'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(cx + cw, gy); ctx.stroke();
     ctx.fillStyle = '#AAAAAA'; ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(dd.toString(), cx - 6, gy + 4);
+    ctx.textAlign = 'right'; ctx.fillText(dd.toString(), cx - 6, gy + 4);
   }
 
-  // Y-axis title
   ctx.save();
-  ctx.translate(x + 16, cy + ch / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillStyle = '#9E9E9E'; ctx.font = '12px system-ui, sans-serif';
-  ctx.textAlign = 'center';
+  ctx.translate(x + 16, cy + ch / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#9E9E9E'; ctx.font = '12px system-ui, sans-serif'; ctx.textAlign = 'center';
   ctx.fillText('Cumulative DD (base 50°F)', 0, 0);
-  ctx.restore();
-  ctx.textAlign = 'left';
+  ctx.restore(); ctx.textAlign = 'left';
 
-  // Vertical month lines + X labels
+  // Month vertical lines + X labels
   const monthAbbr = ['', '', '', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'];
   projected.forEach((d, i) => {
     const dt = new Date(d.date + 'T12:00:00');
@@ -604,8 +550,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
     const lw = ctx.measureText(t.label).width + 14;
     ctx.fillStyle = t.color;
     rrect(ctx, cx + cw - lw - 2, gy - 10, lw, 16, 4); ctx.fill();
-    ctx.fillStyle = 'white';
-    ctx.fillText(t.label, cx + cw - lw + 5, gy + 2);
+    ctx.fillStyle = 'white'; ctx.fillText(t.label, cx + cw - lw + 5, gy + 2);
   }
 
   // Typical season (gray dashed)
@@ -621,36 +566,27 @@ function drawGDDPanel(ctx, x, y, w, h) {
   });
   ctx.stroke(); ctx.setLineDash([]);
 
-  // Actual area fill
   const actualEnd = actual.length;
+
+  // Actual area fill + line
   if (actualEnd > 0) {
     ctx.beginPath();
-    actual.forEach((d, i) => {
-      const [px, py] = [toX(i), toY(d.cumDD)];
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    });
+    actual.forEach((d, i) => { i === 0 ? ctx.moveTo(toX(i), toY(d.cumDD)) : ctx.lineTo(toX(i), toY(d.cumDD)); });
     ctx.lineTo(toX(actualEnd - 1), cy + ch); ctx.lineTo(cx, cy + ch); ctx.closePath();
     ctx.fillStyle = 'rgba(43,110,59,0.09)'; ctx.fill();
-  }
 
-  // Actual DD line (solid green)
-  if (actualEnd > 0) {
     ctx.beginPath();
-    actual.forEach((d, i) => {
-      const [px, py] = [toX(i), toY(d.cumDD)];
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    });
+    actual.forEach((d, i) => { i === 0 ? ctx.moveTo(toX(i), toY(d.cumDD)) : ctx.lineTo(toX(i), toY(d.cumDD)); });
     ctx.strokeStyle = '#2B6E3B'; ctx.lineWidth = 2.5; ctx.stroke();
   }
 
-  // Projected line (dashed green)
+  // Projected line
   if (actualEnd < nPoints) {
     ctx.beginPath(); ctx.setLineDash([6, 4]);
     ctx.strokeStyle = '#2B6E3B'; ctx.lineWidth = 2;
     projected.forEach((d, i) => {
       if (i < actualEnd - 1) return;
-      const [px, py] = [toX(i), toY(d.cumDD)];
-      i === actualEnd - 1 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      i === actualEnd - 1 ? ctx.moveTo(toX(i), toY(d.cumDD)) : ctx.lineTo(toX(i), toY(d.cumDD));
     });
     ctx.stroke(); ctx.setLineDash([]);
   }
@@ -664,8 +600,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
     ctx.strokeStyle = '#1A3D23'; ctx.lineWidth = 1.5;
     ctx.moveTo(tx2, cy); ctx.lineTo(tx2, cy + ch); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = '#1A3D23'; ctx.font = 'bold 11px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Today', tx2, cy + 12); ctx.textAlign = 'left';
+    ctx.textAlign = 'center'; ctx.fillText('Today', tx2, cy + 12); ctx.textAlign = 'left';
   }
 
   // Legend
@@ -678,14 +613,70 @@ function drawGDDPanel(ctx, x, y, w, h) {
   ctx.fillStyle = '#444'; ctx.fillText('Actual DD', lx + 30, liy + 1); lx += 120;
 
   ctx.setLineDash([6, 4]); ctx.strokeStyle = '#2B6E3B'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 26, liy - 4); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 26, liy - 4); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#444'; ctx.fillText('Projected (hist. avg)', lx + 30, liy + 1); lx += 218;
 
   ctx.setLineDash([4, 6]); ctx.strokeStyle = '#C0C0C0'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 26, liy - 4); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(lx, liy - 4); ctx.lineTo(lx + 26, liy - 4); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle = '#444'; ctx.fillText('Typical season', lx + 30, liy + 1);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ZONE SUMMARY — avg and highest count for every zone
+// ═════════════════════════════════════════════════════════════════════════════
+function drawZoneDataPanel(ctx, x, y, w, h) {
+  drawCard(ctx, x, y, w, h, 0);
+  panelTitle(ctx, 'Overall Zone Data', x, y, w);
+
+  const hasData = SEASON_WEEKS.length > 0;
+
+  // 3 columns distributed across full width
+  const c0x = x + 24;   // Zone name
+  const c1x = x + 230;  // Peak avg
+  const c2x = x + 680;  // Highest single count
+
+  const hdrY = y + 60;
+  ctx.fillStyle = '#5A6E60';
+  ctx.font      = 'bold 13px system-ui, sans-serif';
+  ctx.fillText('Zone', c0x, hdrY);
+  ctx.fillText('Peak Average (moths / trap / week)', c1x, hdrY);
+  ctx.fillText('Highest Single Count', c2x, hdrY);
+
+  ctx.strokeStyle = '#D4E6D7'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 1, hdrY + 6); ctx.lineTo(x + w - 1, hdrY + 6); ctx.stroke();
+
+  const rowH = 15;
+  REGIONS.forEach((region, i) => {
+    const ry    = hdrY + 20 + i * rowH;
+    const traps = regionTraps(region.id);
+
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#F7FAF7';
+      ctx.fillRect(x + 1, ry - 12, w - 2, rowH);
+    }
+
+    // Zone color dot
+    ctx.beginPath(); ctx.arc(c0x + 6, ry - 3, 5, 0, Math.PI * 2);
+    ctx.fillStyle = region.color; ctx.fill();
+
+    ctx.fillStyle = '#2E4235'; ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillText(region.name, c0x + 16, ry);
+
+    if (!traps.length || !hasData) {
+      ctx.fillStyle = '#BDBDBD'; ctx.font = '13px system-ui, sans-serif';
+      ctx.fillText('No data', c1x, ry);
+    } else {
+      const peakAvg      = regionPeakAvg(region.id);
+      const highestCount = Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0);
+
+      ctx.font      = '13px system-ui, sans-serif';
+      ctx.fillStyle = peakAvg >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B';
+      ctx.fillText(fmtCount(peakAvg) + ' moths', c1x, ry);
+
+      ctx.fillStyle = highestCount >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B';
+      ctx.fillText(fmtCount(highestCount) + ' moths', c2x, ry);
+    }
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -693,17 +684,17 @@ function drawGDDPanel(ctx, x, y, w, h) {
 // ═════════════════════════════════════════════════════════════════════════════
 function drawFooter(ctx) {
   ctx.fillStyle = '#1A3D23';
-  ctx.fillRect(0, RPT_H - 60, RPT_W, 60);
+  ctx.fillRect(0, RPT_H - 48, RPT_W, 48);
 
   ctx.fillStyle = 'rgba(255,255,255,0.50)';
   ctx.font      = '11px system-ui, sans-serif';
   ctx.fillText(
-    'Valley Agronomics Donald  ·  Internal Report  ·  Confidential — Do not distribute',
-    24, RPT_H - 34
+    'Valley Agronomics Donald  ·  Do not distribute',
+    24, RPT_H - 28
   );
   ctx.fillText(
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
-    24, RPT_H - 14
+    24, RPT_H - 10
   );
 }
 
@@ -718,14 +709,15 @@ function drawCard(ctx, x, y, w, h, r) {
   rrect(ctx, x, y, w, h, r); ctx.stroke();
 }
 
+// panelTitle uses ~24px font so section headers are large and easy to read
 function panelTitle(ctx, text, x, y, w) {
   ctx.fillStyle = '#1A3D23';
-  ctx.font      = 'bold 15px system-ui, sans-serif';
-  ctx.fillText(text, x + 16, y + 23);
+  ctx.font      = 'bold 24px system-ui, sans-serif';
+  ctx.fillText(text, x + 16, y + 30);
 
   ctx.strokeStyle = '#D4E6D7'; ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x + 1, y + 32); ctx.lineTo(x + (w || 700) - 1, y + 32);
+  ctx.moveTo(x + 1, y + 40); ctx.lineTo(x + (w || 700) - 1, y + 40);
   ctx.stroke();
 }
 
