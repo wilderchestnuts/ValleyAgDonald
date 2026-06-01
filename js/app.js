@@ -557,8 +557,13 @@ async function initDegreeDayChart() {
   }
 
   // Build full-season projection: April 1 – Oct 31
-  const projected   = buildSeasonProjection(biofixDate, actual);
+  const projected     = buildSeasonProjection(biofixDate, actual);
   const typicalSeason = buildTypicalSeason(year);
+
+  // Expose for report generator
+  window._ddActual    = actual;
+  window._ddProjected = projected;
+  window._ddTypical   = typicalSeason;
 
   renderDDChart(actual, projected, biofixDate, typicalSeason);
   updateDDStatusCard(actual, projected);
