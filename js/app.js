@@ -81,9 +81,9 @@ function regionWeeklyAvg(regionId, weekDate) {
 
 function regionPeakAvg(regionId) {
   const traps = regionTraps(regionId);
-  if (!traps.length) return 0;
+  if (!traps.length || !SEASON_WEEKS.length) return 0;
   const weekPeaks = SEASON_WEEKS.map(w => regionWeeklyAvg(regionId, w));
-  return Math.max(...weekPeaks);
+  return Math.max(...weekPeaks, 0);
 }
 
 function colorForCount(count) {
@@ -108,8 +108,20 @@ function regionMeta(id) {
 // ═════════════════════════════════════════════════════════════════════════
 
 function renderDashboardStats() {
+  if (!allTraps.length || !SEASON_WEEKS.length) {
+    setText('stat-below',  '—');
+    setText('stat-above',  '—');
+    setText('stat-avg',    '—');
+    setText('stat-max',    '—');
+    setText('hstat-traps', '0');
+    setText('hstat-peak',  '—');
+    const banner = document.getElementById('data-source-label');
+    if (banner) banner.textContent = 'No data loaded — use "Upload Scout Data" above to import your Excel file';
+    return;
+  }
+
   const allCounts = allTraps.flatMap(t => t.weeks.map(w => w.count));
-  const peakCount = Math.max(...allCounts);
+  const peakCount = Math.max(...allCounts, 0);
 
   const aboveCount = allTraps.filter(t => t.weeks.some(w => w.count >= THRESHOLD_SINGLE)).length;
   const belowCount = allTraps.length - aboveCount;
@@ -118,7 +130,7 @@ function renderDashboardStats() {
     const s = allTraps.reduce((a, t) => a + trapAtWeek(t, wk), 0);
     return s / allTraps.length;
   });
-  const seasonPeakAvg = Math.max(...peakWeekAvgs);
+  const seasonPeakAvg = Math.max(...peakWeekAvgs, 0);
   const peakWkIdx     = peakWeekAvgs.indexOf(seasonPeakAvg);
 
   setText('stat-below',  belowCount);
@@ -126,11 +138,11 @@ function renderDashboardStats() {
   setText('stat-avg',    fmtCount(seasonPeakAvg) + '/trap/wk');
   setText('stat-max',    fmtCount(peakCount) + ' moths');
   setText('hstat-traps', allTraps.length);
-  setText('hstat-peak',  fmtDate(SEASON_WEEKS[peakWkIdx]));
+  setText('hstat-peak',  peakWkIdx >= 0 ? fmtDate(SEASON_WEEKS[peakWkIdx]) : '—');
 
   const banner = document.getElementById('data-source-label');
   if (banner) {
-    banner.textContent = `2025 season data · ${allTraps.length} trap stations · Willamette Valley · Donald Valley Agronomics scouting network`;
+    banner.textContent = `${allTraps.length} trap stations · Willamette Valley · Donald Valley Agronomics scouting network`;
   }
 }
 
@@ -235,14 +247,21 @@ function renderRegionCards() {
 
   grid.innerHTML = '';
 
+  if (!SEASON_WEEKS.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:32px;text-align:center;color:var(--text-light);font-size:0.9rem;">No trap data loaded yet — upload your Excel scout file above to populate the dashboard.</div>';
+    return;
+  }
+
   for (const region of REGIONS) {
     const traps    = regionTraps(region.id);
     const peakAvg  = regionPeakAvg(region.id);
     const latestWk = SEASON_WEEKS[SEASON_WEEKS.length - 1];
     const latestAvg = regionWeeklyAvg(region.id, latestWk);
-    const peakWkIdx = SEASON_WEEKS.reduce((best, w, i) =>
-      regionWeeklyAvg(region.id, w) > regionWeeklyAvg(region.id, SEASON_WEEKS[best]) ? i : best, 0);
-    const peakDate  = fmtDate(SEASON_WEEKS[peakWkIdx]);
+    const peakWkIdx = SEASON_WEEKS.length
+      ? SEASON_WEEKS.reduce((best, w, i) =>
+          regionWeeklyAvg(region.id, w) > regionWeeklyAvg(region.id, SEASON_WEEKS[best]) ? i : best, 0)
+      : 0;
+    const peakDate  = SEASON_WEEKS[peakWkIdx] ? fmtDate(SEASON_WEEKS[peakWkIdx]) : '—';
 
     const badgeClass = peakAvg >= THRESHOLD_SINGLE ? 'alert' : 'ok';
     const badgeText  = peakAvg >= THRESHOLD_SINGLE ? 'Action Level Reached' : 'Below Threshold';
