@@ -7,12 +7,11 @@
 window.SHEET_CSV_URL = '';
 
 // ── Region definitions — Willamette Valley hazelnut belt ──────────────────
-// Region names are placeholders; update with your actual district names.
-// Lat/lon are approximate regional centers for the map view.
 const REGIONS = [
   { id: '1', name: 'Region 1', lat: 45.215, lon: -122.800, spread: 0.07, color: '#2196F3' },
   { id: '2', name: 'Region 2', lat: 45.305, lon: -123.005, spread: 0.10, color: '#E53935' },
-  { id: '3', name: 'Region 3', lat: 45.210, lon: -123.215, spread: 0.12, color: '#43A047' },
+  // Zone 3: real coordinates from Valley Ag scouting network (Donald, OR area)
+  { id: '3', name: 'Region 3', lat: 45.225, lon: -122.835, spread: 0.065, color: '#43A047' },
   { id: '4', name: 'Region 4', lat: 44.965, lon: -123.020, spread: 0.09, color: '#FB8C00' },
   { id: '5', name: 'Region 5', lat: 45.390, lon: -122.910, spread: 0.08, color: '#8E24AA' },
 ];
@@ -96,27 +95,75 @@ const RAW_TRAP_COUNTS = [
   [ 45, '5',    7,  12,   0,   0,   6,   4,   2,   3,   3,   4,   3,   0,  1 ],
 ];
 
+// ── Zone 3 real farm roster (from Valley Ag scouting GPS data) ────────────────
+const ZONE3_FARMS = [
+  { farm: 'HAENER FARMS INC',        traps: 8  },
+  { farm: 'NORTHWEST FLORICULTURE',  traps: 3  },
+  { farm: 'DAVID LEAVY',             traps: 5  },
+  { farm: 'B DAVIDSON FARMS LLC',    traps: 4  },
+  { farm: 'ZACHER DELBERT',          traps: 8  },
+  { farm: 'ZACHER RICK C',           traps: 6  },
+  { farm: 'A & R SPADA',             traps: 10 },
+  { farm: 'KAUFMANN FARMS',          traps: 4  },
+  { farm: 'K G FARMS',               traps: 7  },
+];
+
+function buildZone3Traps() {
+  const region     = REGIONS.find(r => r.id === '3');
+  const rng        = lcg(3001);
+  const siteMult   = 0.70;
+  const traps      = [];
+  let   trapIdx    = 0;
+
+  for (const { farm, traps: n } of ZONE3_FARMS) {
+    for (let i = 1; i <= n; i++) {
+      const lat        = region.lat + (rng() - 0.5) * 2 * region.spread;
+      const lon        = region.lon + (rng() - 0.5) * 2 * region.spread;
+      const siteFactor = 0.3 + rng() * 1.4;
+      const weeks      = SEASON_WEEKS.map((date, wi) => {
+        const base  = (FLIGHT_CURVE_200[wi] ?? 0) * siteMult * siteFactor;
+        const noise = 0.4 + rng() * 1.2;
+        return { date, count: parseFloat(Math.max(0, base * noise).toFixed(1)) };
+      });
+
+      traps.push({
+        id:         `Z3-${String(trapIdx + 1).padStart(2, '0')}`,
+        region:     '3',
+        regionName: 'Region 3',
+        grower:     farm,
+        lat:        parseFloat(lat.toFixed(5)),
+        lon:        parseFloat(lon.toFixed(5)),
+        weeks,
+      });
+      trapIdx++;
+    }
+  }
+  return traps;
+}
+
 // Build structured trap objects from raw counts
 function buildRealTraps() {
-  // Track index within each region for lat/lon seeding
-  const regionIdx = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+  const regionIdx = { '1': 0, '2': 0, '4': 0, '5': 0 };
 
-  return RAW_TRAP_COUNTS.map(row => {
-    const [trapNum, regionId, ...counts] = row;
-    const idx = regionIdx[regionId]++;
-    const { lat, lon } = assignLatLon(regionId, idx);
-    const region = REGIONS.find(r => r.id === regionId);
+  const otherZones = RAW_TRAP_COUNTS
+    .filter(row => row[1] !== '3')
+    .map(row => {
+      const [trapNum, regionId, ...counts] = row;
+      const idx    = regionIdx[regionId]++;
+      const { lat, lon } = assignLatLon(regionId, idx);
+      const region = REGIONS.find(r => r.id === regionId);
+      return {
+        id:         `T-${String(trapNum).padStart(3, '0')}`,
+        region:     regionId,
+        regionName: region ? region.name : `Region ${regionId}`,
+        grower:     '',
+        lat,
+        lon,
+        weeks: SEASON_WEEKS.map((date, i) => ({ date, count: counts[i] ?? 0 })),
+      };
+    });
 
-    return {
-      id:         `T-${String(trapNum).padStart(3, '0')}`,
-      region:     regionId,
-      regionName: region ? region.name : `Region ${regionId}`,
-      grower:     '',   // no grower data in demo set
-      lat,
-      lon,
-      weeks:      SEASON_WEEKS.map((date, i) => ({ date, count: counts[i] ?? 0 })),
-    };
-  });
+  return [...otherZones, ...buildZone3Traps()];
 }
 
 // ── Synthetic 200-trap generator (kept for scale testing) ─────────────────
@@ -230,6 +277,79 @@ async function loadTrapData() {
   }
   return buildRealTraps();
 }
+
+// ── Excel Upload ──────────────────────────────────────────────────────────────
+// Called when user selects a .xlsx file in the admin strip.
+// Expects SheetJS (XLSX) loaded from CDN; loaded on demand.
+window.handleExcelUpload = async function(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('upload-status');
+  statusEl.textContent = 'Parsing Excel file…';
+  statusEl.style.display = 'inline-block';
+
+  try {
+    // Load SheetJS on demand
+    if (!window.XLSX) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const buf  = await file.arrayBuffer();
+    const wb   = XLSX.read(buf, { type: 'array' });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+    if (!rows.length) throw new Error('No data rows found in sheet');
+
+    // Normalise header names → snake_case
+    const normalised = rows.map(row => {
+      const out = {};
+      for (const [k, v] of Object.entries(row)) {
+        out[k.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')] = v;
+      }
+      return out;
+    });
+
+    const parsed = transformSheetData(normalised);
+    if (!parsed.length) throw new Error('Could not parse trap data from sheet — check column names');
+
+    // Merge into allTraps: update counts for matching trap IDs, add new traps
+    for (const incoming of parsed) {
+      const existing = window.allTraps && allTraps.find(t => t.id === incoming.id);
+      if (existing) {
+        // Merge / append weeks
+        for (const wk of incoming.weeks) {
+          const idx = existing.weeks.findIndex(w => w.date === wk.date);
+          if (idx >= 0) { existing.weeks[idx].count = wk.count; }
+          else          { existing.weeks.push(wk); existing.weeks.sort((a,b) => a.date.localeCompare(b.date)); }
+        }
+      } else if (window.allTraps) {
+        allTraps.push(incoming);
+      }
+    }
+
+    // Re-render dashboard
+    if (typeof renderDashboardStats === 'function') renderDashboardStats();
+    if (typeof renderMainChart      === 'function') { if (mainChart) { mainChart.destroy(); mainChart = null; } renderMainChart(); }
+    if (typeof renderRegionCards    === 'function') renderRegionCards();
+    if (typeof updateMapData        === 'function') updateMapData();
+
+    statusEl.textContent  = `✓ Loaded ${parsed.length} traps from "${file.name}"`;
+    statusEl.className    = 'upload-status success';
+  } catch (err) {
+    statusEl.textContent  = '✗ ' + err.message;
+    statusEl.className    = 'upload-status error';
+    console.error('Excel upload error:', err);
+  }
+
+  inputEl.value = ''; // reset so same file can be re-uploaded
+};
 
 // ── Connect sheet from UI ─────────────────────────────────────────────────
 function connectSheet() {

@@ -45,6 +45,7 @@ const sparklineCharts = {};
 // ── Boot ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   allTraps = await loadTrapData();
+  window.allTraps = allTraps; // expose for report.js + Excel upload
   populateWeekSelect();
   renderDashboardStats();
   renderMainChart();
@@ -763,4 +764,7 @@ function updateDDStatusCard(actual, allPoints) {
   document.getElementById('dd-progress-label').textContent =
     `${fmtCount(currentDD)} of ${progressTarget} DD target (${pct}%)`;
   document.getElementById('hstat-dd').textContent = Math.round(currentDD) + ' DD';
+
+  // Expose for report generator
+  window._currentDD = currentDD;
 }

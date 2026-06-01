@@ -976,6 +976,97 @@ code {
 .popup-count.low  { color: var(--green-600); }
 .popup-meta { font-size: 0.78rem; color: var(--text-light); }
 
+/* ── NAV LOGOUT BUTTON ────────────────────────────────── */
+.nav-logout-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-light);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.12s;
+}
+.nav-logout-btn:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
+
+/* ── ADMIN STRIP ──────────────────────────────────────── */
+.admin-strip {
+  background: var(--green-800);
+  border-bottom: 2px solid var(--green-700);
+  padding: 8px 0;
+}
+
+.admin-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-strip-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--green-200);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-btn-upload {
+  background: rgba(255,255,255,0.12);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.admin-btn-upload:hover { background: rgba(255,255,255,0.22); }
+
+.admin-btn-report {
+  background: var(--amber);
+  color: white;
+  box-shadow: 0 2px 8px rgba(193,122,43,0.35);
+}
+.admin-btn-report:hover { background: #A8651E; }
+.admin-btn-report:disabled { background: rgba(255,255,255,0.18); color: rgba(255,255,255,0.5); cursor: wait; box-shadow: none; }
+
+.admin-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+
+.upload-status, .report-status {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--green-100);
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.1);
+}
+.upload-status.success, .report-status.success { background: rgba(78,160,100,0.3); color: #A8FFB8; }
+.upload-status.error,   .report-status.error   { background: rgba(192,57,43,0.35); color: #FFB8B8; }
+
 /* ── RESPONSIVE ───────────────────────────────────────── */
 @media (max-width: 900px) {
   .dd-layout { grid-template-columns: 1fr; }

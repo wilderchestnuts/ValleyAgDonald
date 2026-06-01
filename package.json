@@ -1,0 +1,12 @@
+{
+  "name": "valleyag-filbertworm-monitoring",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Valley Agronomics Donald — Filbertworm pheromone trap monitoring",
+  "dependencies": {
+    "nodemailer": "^6.9.13"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

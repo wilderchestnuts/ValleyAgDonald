@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — Valley Agronomics Donald</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--green-900) 0%, var(--green-700) 100%);
+    }
+
+    .login-wrap {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px;
+    }
+
+    .login-box {
+      background: white;
+      border-radius: 20px;
+      padding: 48px 40px 40px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+    }
+
+    .login-logo-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      justify-content: center;
+      margin-bottom: 36px;
+    }
+
+    .login-logo-img-wrap {
+      background: var(--green-50);
+      border-radius: 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--green-100);
+    }
+
+    .login-logo-img { height: 44px; width: auto; display: block; }
+
+    .login-logo-text {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--green-800);
+      line-height: 1.25;
+    }
+
+    .login-logo-sub {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--green-500);
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .login-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 0 32px;
+    }
+
+    .login-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--green-800);
+      margin-bottom: 6px;
+    }
+
+    .login-sub {
+      font-size: 0.87rem;
+      color: var(--text-light);
+      margin-bottom: 30px;
+      line-height: 1.5;
+    }
+
+    .login-field { margin-bottom: 22px; }
+
+    .login-field label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-mid);
+      margin-bottom: 7px;
+    }
+
+    .login-field input {
+      width: 100%;
+      padding: 13px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.97rem;
+      font-family: var(--font);
+      color: var(--text);
+      background: var(--bg);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .login-field input:focus {
+      outline: none;
+      border-color: var(--green-500);
+      box-shadow: 0 0 0 3px rgba(59,143,80,0.12);
+    }
+
+    .login-btn {
+      width: 100%;
+      background: var(--green-700);
+      color: white;
+      font-weight: 700;
+      font-size: 0.97rem;
+      font-family: var(--font);
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+      box-shadow: 0 4px 14px rgba(43,110,59,0.3);
+      margin-top: 4px;
+    }
+
+    .login-btn:hover { background: var(--green-800); transform: translateY(-1px); }
+    .login-btn:active { transform: translateY(0); }
+
+    .login-error {
+      display: none;
+      margin-top: 16px;
+      padding: 11px 16px;
+      background: var(--red-light);
+      border: 1px solid #f5c6c2;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--red);
+      text-align: center;
+    }
+    .login-error.show { display: block; }
+
+    .login-note {
+      margin-top: 28px;
+      font-size: 0.78rem;
+      color: var(--text-light);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 500px) {
+      .login-box { padding: 36px 24px 28px; }
+      .login-wrap { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-box">
+      <div class="login-logo-row">
+        <div class="login-logo-img-wrap">
+          <img src="Valley-Ag-Logo-Web-Lg.png" alt="Valley Ag" class="login-logo-img" />
+        </div>
+        <div class="login-logo-text">
+          Valley Agronomics
+          <span class="login-logo-sub">Donald</span>
+        </div>
+      </div>
+      <hr class="login-divider" />
+      <div class="login-title">Staff Sign In</div>
+      <div class="login-sub">Filbertworm Trap Monitoring — Internal Access Only</div>
+
+      <div class="login-field">
+        <label for="pw-input">Password</label>
+        <input
+          type="password"
+          id="pw-input"
+          placeholder="Enter team password"
+          autocomplete="current-password"
+          autofocus
+        />
+      </div>
+
+      <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+      <div class="login-error" id="login-error">Incorrect password. Please try again.</div>
+
+      <div class="login-note">
+        Contact your Valley Ag administrator if you need access.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // SHA-256 hash of "Donald2026"
+    const CORRECT_HASH = '6414b49cde85cb8a524d0456f3895bb54bb158dcab3793cb2a9261200f5cf9e9';
+
+    async function sha256(str) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function doLogin() {
+      const input  = document.getElementById('pw-input');
+      const errEl  = document.getElementById('login-error');
+      const btn    = document.getElementById('login-btn');
+
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+      errEl.classList.remove('show');
+
+      const hash = await sha256(input.value);
+
+      if (hash === CORRECT_HASH) {
+        sessionStorage.setItem('dva_auth', '1');
+        window.location.replace('index.html');
+      } else {
+        errEl.classList.add('show');
+        input.value = '';
+        input.focus();
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    }
+
+    document.getElementById('pw-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    // Already authenticated → skip login
+    if (sessionStorage.getItem('dva_auth') === '1') {
+      window.location.replace('index.html');
+    }
+  </script>
+</body>
+</html>

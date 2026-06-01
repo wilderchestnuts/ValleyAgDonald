@@ -11,6 +11,12 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<script>
+  // Redirect to login if not authenticated
+  if (!sessionStorage.getItem('dva_auth')) {
+    window.location.replace('login.html');
+  }
+</script>
 
 <!-- ═══════════════════════════════════════════════════════ NAV -->
 <nav class="navbar" id="navbar">
@@ -29,8 +35,34 @@
       <li><a href="#resources">Resources</a></li>
     </ul>
     <div class="nav-season-tag">2025 Season</div>
+    <button class="nav-logout-btn" onclick="doLogout()" title="Sign out">Sign Out</button>
   </div>
 </nav>
+
+<!-- ═══════════════════════════════════════════════════════ ADMIN STRIP -->
+<div class="admin-strip">
+  <div class="container admin-strip-inner">
+    <span class="admin-strip-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Staff Controls
+    </span>
+
+    <label class="admin-btn admin-btn-upload" title="Upload weekly scout Excel data">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload Scout Data (.xlsx)
+      <input type="file" id="xlsx-upload" accept=".xlsx,.xls" onchange="handleExcelUpload(this)" style="display:none" />
+    </label>
+    <span class="upload-status" id="upload-status" style="display:none"></span>
+
+    <div class="admin-divider"></div>
+
+    <button class="admin-btn admin-btn-report" id="report-send-btn" onclick="sendAllReports()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Email Weekly Reports
+    </button>
+    <span class="report-status" id="report-status" style="display:none"></span>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════════ HERO -->
 <section class="hero" id="top">
@@ -373,5 +405,12 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
+<script src="js/report.js"></script>
+<script>
+  function doLogout() {
+    sessionStorage.removeItem('dva_auth');
+    window.location.replace('login.html');
+  }
+</script>
 </body>
 </html>
