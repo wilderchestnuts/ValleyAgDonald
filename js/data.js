@@ -200,22 +200,10 @@ window.handleExcelUpload = async function(inputEl) {
     allTraps.splice(0, allTraps.length, ...traps);
     window.allTraps = allTraps;
 
-    // ── Re-render dashboard ───────────────────────────────────────────────────
-    if (typeof populateWeekSelect    === 'function') {
-      const sel = document.getElementById('map-week-select');
-      if (sel) {
-        // Remove old week options (keep "Peak week" option at index 0)
-        while (sel.options.length > 1) sel.remove(1);
-        populateWeekSelect();
-      }
+    // ── Re-render dashboard (app.js owns chart destruction) ──────────────────
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
     }
-    if (typeof renderDashboardStats === 'function') renderDashboardStats();
-    if (typeof renderMainChart === 'function') {
-      if (window.mainChart) { window.mainChart.destroy(); window.mainChart = null; }
-      renderMainChart();
-    }
-    if (typeof renderRegionCards === 'function') renderRegionCards();
-    if (typeof updateMapData     === 'function') updateMapData();
 
     statusEl.textContent = `✓ Loaded ${traps.length} traps from "${file.name}" · ${newDates.length} week(s) of data`;
     statusEl.className   = 'upload-status success';

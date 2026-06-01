@@ -511,6 +511,28 @@ window.closeTrapDetail = function() {
   if (trapDetailChart) { trapDetailChart.destroy(); trapDetailChart = null; }
 };
 
+// Full dashboard refresh — called after Excel upload so chart canvases are
+// properly destroyed before being recreated with new data.
+window.refreshDashboard = function() {
+  if (mainChart) { mainChart.destroy(); mainChart = null; }
+  Object.keys(sparklineCharts).forEach(k => {
+    if (sparklineCharts[k]) sparklineCharts[k].destroy();
+    delete sparklineCharts[k];
+  });
+
+  // Re-populate week selector
+  const sel = document.getElementById('map-week-select');
+  if (sel) {
+    while (sel.options.length > 1) sel.remove(1);
+    populateWeekSelect();
+  }
+
+  renderDashboardStats();
+  renderMainChart();
+  renderRegionCards();
+  updateMapData();
+};
+
 // ═════════════════════════════════════════════════════════════════════════
 // DEGREE DAY MODEL
 // ═════════════════════════════════════════════════════════════════════════
