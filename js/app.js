@@ -34,8 +34,6 @@ const COLOR_SCALE = [
 let allTraps     = [];
 let leafletMap   = null;
 let markerGroup  = null;
-let heatLayer    = null;
-let mapMode      = 'markers';   // 'markers' | 'heat'
 let chartMode    = 'weekly';    // 'weekly' | 'rolling'
 let trapDetailChart = null;
 let mainChart    = null;
@@ -343,89 +341,52 @@ function renderSparkline(canvasId, region) {
 function initMap() {
   leafletMap = L.map('trap-map', { zoomControl: true }).setView([45.15, -122.95], 10);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · © <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(leafletMap);
 
   markerGroup = L.layerGroup().addTo(leafletMap);
 }
 
-window.setMapMode = function(mode) {
-  mapMode = mode;
-  document.getElementById('btn-markers').classList.toggle('active', mode === 'markers');
-  document.getElementById('btn-heat').classList.toggle('active', mode === 'heat');
-  updateMapData();
-};
-
 window.updateMapData = function() {
   const selectEl  = document.getElementById('map-week-select');
   const weekValue = selectEl ? selectEl.value : 'peak';
 
-  // Clear existing layers
   markerGroup.clearLayers();
-  if (heatLayer) { leafletMap.removeLayer(heatLayer); heatLayer = null; }
 
   const getCount = trap =>
     weekValue === 'peak' ? trapPeak(trap) : trapAtWeek(trap, weekValue);
 
-  if (mapMode === 'markers') {
-    for (const trap of allTraps) {
-      const count = getCount(trap);
-      const col   = colorForCount(count);
+  for (const trap of allTraps) {
+    const count = getCount(trap);
+    const col   = colorForCount(count);
 
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:12px; height:12px; border-radius:50%;
-          background:${col.hex}; border:2px solid white;
-          box-shadow:0 1px 4px rgba(0,0,0,0.3);
-          transition: transform .1s;
-        " title="${trap.id}"></div>`,
-        iconSize:   [12, 12],
-        iconAnchor: [6, 6],
-      });
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:12px; height:12px; border-radius:50%;
+        background:${col.hex}; border:2px solid white;
+        box-shadow:0 1px 4px rgba(0,0,0,0.3);
+        transition: transform .1s;
+      " title="${trap.id}"></div>`,
+      iconSize:   [12, 12],
+      iconAnchor: [6, 6],
+    });
 
-      const marker = L.marker([trap.lat, trap.lon], { icon })
-        .on('click', () => openTrapDetail(trap, getCount(trap)));
+    const marker = L.marker([trap.lat, trap.lon], { icon })
+      .on('click', () => openTrapDetail(trap, getCount(trap)));
 
-      const countClass = col.cls;
-      marker.bindPopup(`
-        <div class="popup-trap-id">${trap.id}</div>
-        <div class="popup-count ${countClass}">${fmtCount(count)} moths</div>
-        <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
-        <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
-          Click for full season data
-        </div>
-      `);
+    marker.bindPopup(`
+      <div class="popup-trap-id">${trap.id}</div>
+      <div class="popup-count ${col.cls}">${fmtCount(count)} moths</div>
+      <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
+      <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
+        Click for full season data
+      </div>
+    `);
 
-      markerGroup.addLayer(marker);
-    }
-  } else {
-    // Heat map mode — weight by count, scale to 0-1
-    const maxCount = Math.max(...allTraps.map(getCount), 1);
-    const points = allTraps.map(t => [t.lat, t.lon, getCount(t) / maxCount]);
-
-    if (typeof L.heatLayer === 'function') {
-      heatLayer = L.heatLayer(points, {
-        radius:  28,
-        blur:    22,
-        maxZoom: 14,
-        gradient: { 0.2: '#78C66A', 0.5: '#E8C547', 0.75: '#E84747', 1.0: '#8B0000' },
-      }).addTo(leafletMap);
-    } else {
-      // Fallback: translucent circles when heat plugin unavailable
-      const maxCount = Math.max(...allTraps.map(getCount), 1);
-      for (const t of allTraps) {
-        const intensity = getCount(t) / maxCount;
-        L.circle([t.lat, t.lon], {
-          radius: 500 + intensity * 800,
-          color: 'transparent',
-          fillColor: colorForCount(getCount(t)).hex,
-          fillOpacity: 0.15 + intensity * 0.35,
-        }).addTo(markerGroup);
-      }
-    }
+    markerGroup.addLayer(marker);
   }
 };
 
@@ -438,6 +399,8 @@ function populateWeekSelect() {
     opt.textContent = `Week of ${fmtDate(w)}`;
     sel.appendChild(opt);
   });
+  // Default to the most recent week
+  if (SEASON_WEEKS.length) sel.value = SEASON_WEEKS[SEASON_WEEKS.length - 1];
 }
 
 window.highlightRegionOnMap = function(regionId) {

@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   report.js — Portrait zone PDF/JPEG report generator
-   Canvas 1200×1920
+   report.js — Portrait zone JPEG report generator
+   Canvas 1200×1980
    Header → Stats → Map → Trend → GDD → Regional Summary → Footer
    ═══════════════════════════════════════════════════════ */
 
@@ -9,25 +9,12 @@
 window._currentDD = 0;
 
 const RPT_W = 1200;
-const RPT_H = 1920;
+const RPT_H = 1980;
 
 // Layout y positions (gap = 8px between sections)
 // Header:   0–100   Stats: 108–210   Map:  218–834
-// Trend: 842–1224   GDD: 1232–1642  Zone: 1650–1860
-// Footer: 1868–1920
-
-// ── jsPDF loader ─────────────────────────────────────────────────────────────
-let _jsPDFLoaded = false;
-function loadJsPDF() {
-  return new Promise((resolve, reject) => {
-    if (_jsPDFLoaded || window.jspdf) { _jsPDFLoaded = true; resolve(); return; }
-    const s = document.createElement('script');
-    s.src     = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';
-    s.onload  = () => { _jsPDFLoaded = true; resolve(); };
-    s.onerror = () => reject(new Error('Failed to load jsPDF'));
-    document.head.appendChild(s);
-  });
-}
+// Trend: 842–1224   GDD: 1232–1642  Zone: 1650–1910
+// Footer: 1918–1980
 
 // ── Public entry points ───────────────────────────────────────────────────────
 window.sendAllReports = async function() {
@@ -35,13 +22,11 @@ window.sendAllReports = async function() {
   const statusEl = document.getElementById('report-status');
 
   btn.disabled           = true;
-  statusEl.textContent   = 'Loading PDF library…';
+  statusEl.textContent   = 'Building reports…';
   statusEl.className     = 'report-status';
   statusEl.style.display = 'inline-block';
 
   try {
-    await loadJsPDF();
-
     const zonesWithData = REGIONS.filter(r =>
       allTraps && allTraps.some(t => t.region === r.id)
     );
@@ -70,21 +55,12 @@ window.sendAllReports = async function() {
 };
 
 window.sendZoneReport = async function(regionId) {
-  await loadJsPDF();
-
   const region = REGIONS.find(r => r.id === regionId);
   if (!region) throw new Error(`Unknown zone ${regionId}`);
 
   const canvas      = await buildReportCanvas(regionId, region);
   const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.82);
   const jpegB64     = jpegDataUrl.split(',')[1];
-
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pgW = pdf.internal.pageSize.getWidth();
-  const pgH = pdf.internal.pageSize.getHeight();
-  pdf.addImage(jpegDataUrl, 'JPEG', 0, 0, pgW, pgH);
-  const pdfB64 = pdf.output('datauristring').split(',')[1];
 
   const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
   const weekLabel = latestWk
@@ -95,7 +71,6 @@ window.sendZoneReport = async function(regionId) {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      pdf:        pdfB64,
       jpeg:       jpegB64,
       regionName: `Zone ${regionId}`,
       weekDate:   weekLabel,
@@ -136,7 +111,7 @@ async function buildReportCanvas(regionId, region) {
   await drawMapPanel(ctx, regionId, 0, 218, RPT_W, 616);
   drawTrendPanel(ctx, regionId, region, 0, 842, RPT_W, 382);
   drawGDDPanel(ctx, 0, 1232, RPT_W, 410);
-  drawZoneDataPanel(ctx, 0, 1650, RPT_W, 210);
+  drawZoneDataPanel(ctx, 0, 1650, RPT_W, 260);
   drawFooter(ctx);
 
   return cvs;
@@ -627,43 +602,43 @@ function drawZoneDataPanel(ctx, x, y, w, h) {
   const hasData = SEASON_WEEKS.length > 0;
 
   const c0x = x + 24;   // Zone name
-  const c1x = x + 260;  // Peak avg
-  const c2x = x + 720;  // Highest single count
+  const c1x = x + 290;  // Peak avg
+  const c2x = x + 760;  // Highest single count
 
-  const hdrY = y + 66;
+  const hdrY = y + 68;
   ctx.fillStyle = '#5A6E60';
-  ctx.font      = 'bold 17px system-ui, sans-serif';
+  ctx.font      = 'bold 26px system-ui, sans-serif';
   ctx.fillText('Zone', c0x, hdrY);
   ctx.fillText('Peak Average (moths / trap / week)', c1x, hdrY);
   ctx.fillText('Highest Single Count', c2x, hdrY);
 
   ctx.strokeStyle = '#D4E6D7'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x + 1, hdrY + 8); ctx.lineTo(x + w - 1, hdrY + 8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 1, hdrY + 10); ctx.lineTo(x + w - 1, hdrY + 10); ctx.stroke();
 
-  const rowH = 24;
+  const rowH = 32;
   REGIONS.forEach((region, i) => {
-    const ry    = hdrY + 28 + i * rowH;
+    const ry    = hdrY + 36 + i * rowH;
     const traps = regionTraps(region.id);
 
     if (i % 2 === 0) {
       ctx.fillStyle = '#F7FAF7';
-      ctx.fillRect(x + 1, ry - 14, w - 2, rowH);
+      ctx.fillRect(x + 1, ry - 18, w - 2, rowH);
     }
 
-    ctx.beginPath(); ctx.arc(c0x + 7, ry - 4, 6, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(c0x + 8, ry - 5, 8, 0, Math.PI * 2);
     ctx.fillStyle = region.color; ctx.fill();
 
-    ctx.fillStyle = '#2E4235'; ctx.font = 'bold 17px system-ui, sans-serif';
-    ctx.fillText(region.name, c0x + 18, ry);
+    ctx.fillStyle = '#2E4235'; ctx.font = 'bold 26px system-ui, sans-serif';
+    ctx.fillText(region.name, c0x + 22, ry);
 
     if (!traps.length || !hasData) {
-      ctx.fillStyle = '#BDBDBD'; ctx.font = '17px system-ui, sans-serif';
+      ctx.fillStyle = '#BDBDBD'; ctx.font = '26px system-ui, sans-serif';
       ctx.fillText('No data', c1x, ry);
     } else {
       const peakAvg      = regionPeakAvg(region.id);
       const highestCount = Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0);
 
-      ctx.font      = '17px system-ui, sans-serif';
+      ctx.font      = '26px system-ui, sans-serif';
       ctx.fillStyle = peakAvg >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B';
       ctx.fillText(fmtCount(peakAvg) + ' moths', c1x, ry);
 
@@ -678,17 +653,17 @@ function drawZoneDataPanel(ctx, x, y, w, h) {
 // ═════════════════════════════════════════════════════════════════════════════
 function drawFooter(ctx) {
   ctx.fillStyle = '#1A3D23';
-  ctx.fillRect(0, RPT_H - 52, RPT_W, 52);
+  ctx.fillRect(0, RPT_H - 62, RPT_W, 62);
 
   ctx.fillStyle = 'rgba(255,255,255,0.50)';
   ctx.font      = '16px system-ui, sans-serif';
   ctx.fillText(
     'Valley Agronomics Donald  ·  Do not distribute',
-    24, RPT_H - 30
+    24, RPT_H - 36
   );
   ctx.fillText(
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
-    24, RPT_H - 10
+    24, RPT_H - 14
   );
 }
 

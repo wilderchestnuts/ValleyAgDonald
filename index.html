@@ -175,6 +175,53 @@
   </div>
 </section>
 
+<!-- ═══════════════════════════════════════════════════════ MAP OF TRAP COUNTS -->
+<section class="section section-alt" id="heatmap">
+  <div class="container">
+    <div class="section-header">
+      <h2>Map of Trap Counts</h2>
+      <p>Each marker is one trap. Color indicates <strong>weekly count</strong> for the selected week. Click any trap for full catch history.</p>
+    </div>
+
+    <!-- Map controls -->
+    <div class="map-controls">
+      <div class="map-control-group">
+        <span class="map-ctrl-label">Week:</span>
+        <select id="map-week-select" onchange="updateMapData()">
+          <option value="peak">Peak week (season high)</option>
+          <!-- Week options added by JS -->
+        </select>
+      </div>
+      <div class="map-legend">
+        <span class="legend-label">Low</span>
+        <div class="legend-bar"></div>
+        <span class="legend-label">High</span>
+        <span class="legend-threshold-note">Threshold ≥ 5/trap</span>
+      </div>
+    </div>
+
+    <div id="trap-map" class="trap-map"></div>
+
+    <!-- Trap detail popup (custom, outside map) -->
+    <div class="trap-detail-panel" id="trap-detail" style="display:none">
+      <div class="trap-detail-header">
+        <span id="td-trap-id" class="td-id"></span>
+        <span id="td-region" class="td-region-badge"></span>
+        <button onclick="closeTrapDetail()" class="td-close">✕</button>
+      </div>
+      <div class="trap-detail-body">
+        <div class="td-meta">
+          <span id="td-grower"></span>
+          <span id="td-coords"></span>
+        </div>
+        <div class="chart-wrap" style="max-height:180px">
+          <canvas id="td-chart" height="80"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════════════════════ DEGREE DAY MODEL -->
 <section class="section section-alt" id="degree-days">
   <div class="container">
@@ -259,58 +306,6 @@
     </div>
     <div class="region-grid" id="region-grid">
       <!-- Populated by JS -->
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════ HEATMAP -->
-<section class="section section-alt" id="heatmap">
-  <div class="container">
-    <div class="section-header">
-      <h2>Trap Heat Map</h2>
-      <p>Each marker is one trap. Color indicates <strong>peak weekly count</strong> for the 2025 season. Click any trap for full catch history.</p>
-    </div>
-
-    <!-- Map controls -->
-    <div class="map-controls">
-      <div class="map-control-group">
-        <span class="map-ctrl-label">View mode:</span>
-        <button class="map-btn active" id="btn-markers" onclick="setMapMode('markers')">Individual Traps</button>
-        <button class="map-btn" id="btn-heat" onclick="setMapMode('heat')">Heat Map</button>
-      </div>
-      <div class="map-control-group">
-        <span class="map-ctrl-label">Color by:</span>
-        <select id="map-week-select" onchange="updateMapData()">
-          <option value="peak">Peak week (season high)</option>
-          <!-- Week options added by JS -->
-        </select>
-      </div>
-      <div class="map-legend">
-        <span class="legend-label">Low</span>
-        <div class="legend-bar"></div>
-        <span class="legend-label">High</span>
-        <span class="legend-threshold-note">Threshold ≥ 5/trap</span>
-      </div>
-    </div>
-
-    <div id="trap-map" class="trap-map"></div>
-
-    <!-- Trap detail popup (custom, outside map) -->
-    <div class="trap-detail-panel" id="trap-detail" style="display:none">
-      <div class="trap-detail-header">
-        <span id="td-trap-id" class="td-id"></span>
-        <span id="td-region" class="td-region-badge"></span>
-        <button onclick="closeTrapDetail()" class="td-close">✕</button>
-      </div>
-      <div class="trap-detail-body">
-        <div class="td-meta">
-          <span id="td-grower"></span>
-          <span id="td-coords"></span>
-        </div>
-        <div class="chart-wrap" style="max-height:180px">
-          <canvas id="td-chart" height="80"></canvas>
-        </div>
-      </div>
     </div>
   </div>
 </section>
