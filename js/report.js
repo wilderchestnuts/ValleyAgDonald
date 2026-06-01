@@ -23,30 +23,42 @@ function loadJsPDF() {
 
 // ── Public entry points ───────────────────────────────────────────────────────
 
-// Send all zones — called from "Email Weekly Reports" button
+// Send all zones that have data — called from "Email Weekly Reports" button
 window.sendAllReports = async function() {
   const btn      = document.getElementById('report-send-btn');
   const statusEl = document.getElementById('report-status');
 
-  btn.disabled      = true;
-  statusEl.textContent  = 'Loading PDF library…';
-  statusEl.className    = 'report-status';
+  btn.disabled       = true;
+  statusEl.textContent   = 'Loading PDF library…';
+  statusEl.className     = 'report-status';
   statusEl.style.display = 'inline-block';
 
   try {
     await loadJsPDF();
 
-    for (const region of REGIONS) {
+    const zonesWithData = REGIONS.filter(r =>
+      allTraps && allTraps.some(t => t.region === r.id)
+    );
+
+    if (!zonesWithData.length) {
+      statusEl.textContent = '✗ No trap data loaded — upload your Excel file first';
+      statusEl.className   = 'report-status error';
+      btn.disabled = false;
+      return;
+    }
+
+    for (const region of zonesWithData) {
       statusEl.textContent = `Generating Zone ${region.id} report…`;
       await sendZoneReport(region.id);
     }
 
-    statusEl.textContent  = '✓ Reports sent to morgan.curtis@valleyag.com';
-    statusEl.className    = 'report-status success';
+    const recipient = 'morgan.curtis@valleyag.com';
+    statusEl.textContent = `✓ ${zonesWithData.length} zone report(s) sent to ${recipient}`;
+    statusEl.className   = 'report-status success';
   } catch (err) {
     console.error('Report error:', err);
-    statusEl.textContent  = '✗ ' + err.message;
-    statusEl.className    = 'report-status error';
+    statusEl.textContent = '✗ ' + err.message;
+    statusEl.className   = 'report-status error';
   } finally {
     btn.disabled = false;
   }
