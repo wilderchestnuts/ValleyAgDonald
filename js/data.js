@@ -50,6 +50,10 @@ function parseHeaderDate(val) {
 
   // String date formats
   const str = String(val).trim();
+
+  // Generic week labels like "Week 1", "Week 2" — pass through as-is
+  if (/^week\s*\d+$/i.test(str)) return str;
+
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
     const [m, d, y] = str.split('/');
     return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;

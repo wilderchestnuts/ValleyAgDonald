@@ -93,8 +93,20 @@ function fmtCount(n) {
 }
 
 function fmtDate(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso || '';
   const d = new Date(iso + 'T12:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Returns [lat, lon] offsets for N traps clustered at one point.
+// rLat in degrees; rLon scaled to appear round at ~lat 45°.
+function clusterLatLonOffsets(n, rLat) {
+  if (n <= 1) return [[0, 0]];
+  const rLon = rLat * 1.41;
+  return Array.from({ length: n }, (_, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    return [Math.cos(angle) * rLat, Math.sin(angle) * rLon];
+  });
 }
 
 function regionMeta(id) {
@@ -358,7 +370,7 @@ window.updateMapData = function() {
   const getCount = trap =>
     weekValue === 'peak' ? trapPeak(trap) : trapAtWeek(trap, weekValue);
 
-  // Group traps by lat/lon so shared-point fields show one marker
+  // Group traps by lat/lon to compute cluster offsets
   const locationGroups = new Map();
   for (const trap of allTraps) {
     const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
@@ -367,41 +379,42 @@ window.updateMapData = function() {
   }
 
   for (const trapsAtLoc of locationGroups.values()) {
-    const maxCount = Math.max(...trapsAtLoc.map(getCount));
-    const col      = colorForCount(maxCount);
-    const first    = trapsAtLoc[0];
-    const multi    = trapsAtLoc.length > 1;
+    const n       = trapsAtLoc.length;
+    const offsets = clusterLatLonOffsets(n, 0.0015);
 
-    const icon = L.divIcon({
-      className: '',
-      html: `<div style="
-        width:12px; height:12px; border-radius:50%;
-        background:${col.hex}; border:2px solid white;
-        box-shadow:0 1px 4px rgba(0,0,0,0.3);
-        transition: transform .1s;
-      "></div>`,
-      iconSize:   [12, 12],
-      iconAnchor: [6, 6],
+    trapsAtLoc.forEach((trap, i) => {
+      const lat   = trap.lat + offsets[i][0];
+      const lon   = trap.lon + offsets[i][1];
+      const count = getCount(trap);
+      const col   = colorForCount(count);
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:12px; height:12px; border-radius:50%;
+          background:${col.hex}; border:2px solid white;
+          box-shadow:0 1px 4px rgba(0,0,0,0.3);
+          transition: transform .1s;
+        "></div>`,
+        iconSize:   [12, 12],
+        iconAnchor: [6, 6],
+      });
+
+      const clusterNote = n > 1 ? ` (${i + 1}/${n} at this location)` : '';
+      const marker = L.marker([lat, lon], { icon })
+        .on('click', () => openLocationDetail([trap]));
+
+      marker.bindPopup(`
+        <div class="popup-trap-id">${trap.id}${clusterNote}</div>
+        <div class="popup-count ${col.cls}">${fmtCount(count)} moths</div>
+        <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
+        <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
+          Click for full season data
+        </div>
+      `);
+
+      markerGroup.addLayer(marker);
     });
-
-    const label = multi ? `${trapsAtLoc.length} traps` : first.id;
-    const meta  = multi
-      ? `${first.regionName} · ${trapsAtLoc.length} traps`
-      : `${first.regionName} · ${first.grower}`;
-
-    const marker = L.marker([first.lat, first.lon], { icon })
-      .on('click', () => openLocationDetail(trapsAtLoc));
-
-    marker.bindPopup(`
-      <div class="popup-trap-id">${label}</div>
-      <div class="popup-count ${col.cls}">${fmtCount(maxCount)} moths${multi ? ' (highest)' : ''}</div>
-      <div class="popup-meta">${meta}</div>
-      <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
-        Click for full season data
-      </div>
-    `);
-
-    markerGroup.addLayer(marker);
   }
 };
 

@@ -326,22 +326,38 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
   ctx.save();
   ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
 
+  // Group traps by location so co-located traps spread into a cluster
+  const locGroups = new Map();
   for (const trap of locatedTraps) {
-    const { x: px, y: py } = geoToPx(trap.lat, trap.lon);
-    const count = trapAtWeek(trap, latestWk);
-    const col   = colorForCount(count);
-    const r     = 12;
+    const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
+    if (!locGroups.has(key)) locGroups.set(key, []);
+    locGroups.get(key).push(trap);
+  }
 
-    ctx.beginPath(); ctx.arc(px, py, r + 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
+  for (const group of locGroups.values()) {
+    const n       = group.length;
+    const clrR    = Math.max(18, 14 + n * 1.5); // cluster ring radius in px
+    const offsets = rptClusterOffsets(n, clrR);
+    const base    = geoToPx(group[0].lat, group[0].lon);
 
-    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = col.hex; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
+    group.forEach((trap, i) => {
+      const px    = base.x + offsets[i][0];
+      const py    = base.y + offsets[i][1];
+      const count = trapAtWeek(trap, latestWk);
+      const col   = colorForCount(count);
+      const r     = 12;
 
-    ctx.fillStyle = 'white'; ctx.font = 'bold 12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(fmtCount(count), px, py + 4);
+      ctx.beginPath(); ctx.arc(px, py, r + 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
+
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fillStyle = col.hex; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+      ctx.fillStyle = 'white'; ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(fmtCount(count), px, py + 4);
+    });
   }
   ctx.restore();
   ctx.textAlign = 'left';
@@ -670,6 +686,15 @@ function drawFooter(ctx) {
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
     24, RPT_H - 14
   );
+}
+
+// Returns [dx, dy] pixel offsets for N dots arranged in a ring of radius r.
+function rptClusterOffsets(n, r) {
+  if (n <= 1) return [[0, 0]];
+  return Array.from({ length: n }, (_, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    return [Math.cos(angle) * r, Math.sin(angle) * r];
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
