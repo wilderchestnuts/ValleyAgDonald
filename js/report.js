@@ -203,16 +203,18 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
   const traps        = regionTraps(regionId);
   const latestWk     = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
   const latestAvg    = regionWeeklyAvg(regionId, latestWk);
-  const peakAvg      = regionPeakAvg(regionId);
   const highestCount = traps.length
     ? Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0)
     : 0;
+  const trapsZero  = traps.filter(t => trapAtWeek(t, latestWk) === 0).length;
+  const trapsOver5 = traps.filter(t => trapAtWeek(t, latestWk) >= THRESHOLD_SINGLE).length;
 
   const boxes = [
     { label: 'Traps Monitored', value: traps.length.toString(),           color: '#2B6E3B' },
     { label: 'This Week Avg',   value: fmtCount(latestAvg) + ' / trap',   color: '#2B6E3B' },
-    { label: 'Season Peak Avg', value: fmtCount(peakAvg)   + ' / trap',   color: peakAvg       >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
-    { label: 'Highest Count',   value: fmtCount(highestCount) + ' moths', color: highestCount  >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
+    { label: 'Traps with 0',    value: trapsZero.toString(),               color: '#2B6E3B' },
+    { label: 'Traps over 5',    value: trapsOver5.toString(),              color: trapsOver5 > 0 ? '#C0392B' : '#2B6E3B' },
+    { label: 'Highest Count',   value: fmtCount(highestCount) + ' moths', color: highestCount >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
   ];
 
   const gap  = 8;

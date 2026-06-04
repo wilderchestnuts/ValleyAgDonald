@@ -263,18 +263,14 @@ function renderRegionCards() {
   }
 
   for (const region of REGIONS) {
-    const traps    = regionTraps(region.id);
-    const peakAvg  = regionPeakAvg(region.id);
-    const latestWk = SEASON_WEEKS[SEASON_WEEKS.length - 1];
-    const latestAvg = regionWeeklyAvg(region.id, latestWk);
-    const peakWkIdx = SEASON_WEEKS.length
-      ? SEASON_WEEKS.reduce((best, w, i) =>
-          regionWeeklyAvg(region.id, w) > regionWeeklyAvg(region.id, SEASON_WEEKS[best]) ? i : best, 0)
-      : 0;
-    const peakDate  = SEASON_WEEKS[peakWkIdx] ? fmtDate(SEASON_WEEKS[peakWkIdx]) : '—';
+    const traps      = regionTraps(region.id);
+    const latestWk   = SEASON_WEEKS[SEASON_WEEKS.length - 1];
+    const latestAvg  = regionWeeklyAvg(region.id, latestWk);
+    const trapsZero  = traps.filter(t => trapAtWeek(t, latestWk) === 0).length;
+    const trapsOver5 = traps.filter(t => trapAtWeek(t, latestWk) >= THRESHOLD_SINGLE).length;
 
-    const badgeClass = peakAvg >= THRESHOLD_SINGLE ? 'alert' : 'ok';
-    const badgeText  = peakAvg >= THRESHOLD_SINGLE ? 'Action Level Reached' : 'Below Threshold';
+    const badgeClass = trapsOver5 > 0 ? 'alert' : 'ok';
+    const badgeText  = trapsOver5 > 0 ? 'Action Level Reached' : 'Below Threshold';
 
     const card = document.createElement('div');
     card.className = 'region-card';
@@ -288,16 +284,20 @@ function renderRegionCards() {
       </div>
       <div class="region-stats-row">
         <div class="region-stat">
-          <strong>${fmtCount(peakAvg)}</strong>
-          Peak avg/trap/wk
+          <strong>${fmtCount(latestAvg)}</strong>
+          This week avg
         </div>
         <div class="region-stat">
-          <strong>${peakDate}</strong>
-          Peak date
+          <strong>${trapsZero}</strong>
+          Traps with 0
+        </div>
+        <div class="region-stat">
+          <strong style="color:${trapsOver5 > 0 ? '#C0392B' : 'inherit'}">${trapsOver5}</strong>
+          Traps over 5
         </div>
         <div class="region-stat">
           <strong>${traps.length}</strong>
-          Traps
+          Total traps
         </div>
       </div>
       <canvas id="spark-${region.id}" class="region-sparkline"></canvas>
