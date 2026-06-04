@@ -14,8 +14,18 @@ const REGIONS = [
 // Populated from Excel uploads; starts empty
 const SEASON_WEEKS = [];
 
-// ── Primary loader — returns whatever is in allTraps (populated by upload) ───
+// ── Primary loader — restores from localStorage if available ─────────────────
 async function loadTrapData() {
+  try {
+    const saved = localStorage.getItem('dva_trap_data');
+    if (saved) {
+      const { traps, weeks } = JSON.parse(saved);
+      if (traps && traps.length && weeks && weeks.length) {
+        SEASON_WEEKS.splice(0, SEASON_WEEKS.length, ...weeks);
+        return traps;
+      }
+    }
+  } catch (_) {}
   return [];
 }
 
@@ -199,6 +209,14 @@ window.handleExcelUpload = async function(inputEl) {
     // ── Replace allTraps entirely ─────────────────────────────────────────────
     allTraps.splice(0, allTraps.length, ...traps);
     window.allTraps = allTraps;
+
+    // ── Persist to localStorage so data survives page refresh ────────────────
+    try {
+      localStorage.setItem('dva_trap_data', JSON.stringify({
+        traps: allTraps,
+        weeks: SEASON_WEEKS,
+      }));
+    } catch (_) {}
 
     // ── Re-render dashboard (app.js owns chart destruction) ──────────────────
     if (typeof window.refreshDashboard === 'function') {

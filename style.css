@@ -752,7 +752,7 @@ code {
   color: white;
   padding: 12px 20px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
 }
 
@@ -780,12 +780,35 @@ code {
 
 .trap-detail-body { padding: 16px 20px; }
 
-.td-meta {
+.td-header-main {
   display: flex;
-  gap: 20px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.td-coords-text {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.75);
+  font-weight: 400;
+}
+
+.td-trap-section {
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+.td-trap-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.td-trap-label {
   font-size: 0.82rem;
-  color: var(--text-light);
-  margin-bottom: 12px;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin-bottom: 8px;
 }
 
 /* ── RESOURCES ────────────────────────────────────────── */

@@ -35,7 +35,7 @@ let allTraps     = [];
 let leafletMap   = null;
 let markerGroup  = null;
 let chartMode    = 'weekly';    // 'weekly' | 'rolling'
-let trapDetailChart = null;
+let trapDetailCharts = [];
 let mainChart    = null;
 let ddChart      = null;
 const sparklineCharts = {};
@@ -358,9 +358,19 @@ window.updateMapData = function() {
   const getCount = trap =>
     weekValue === 'peak' ? trapPeak(trap) : trapAtWeek(trap, weekValue);
 
+  // Group traps by lat/lon so shared-point fields show one marker
+  const locationGroups = new Map();
   for (const trap of allTraps) {
-    const count = getCount(trap);
-    const col   = colorForCount(count);
+    const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
+    if (!locationGroups.has(key)) locationGroups.set(key, []);
+    locationGroups.get(key).push(trap);
+  }
+
+  for (const trapsAtLoc of locationGroups.values()) {
+    const maxCount = Math.max(...trapsAtLoc.map(getCount));
+    const col      = colorForCount(maxCount);
+    const first    = trapsAtLoc[0];
+    const multi    = trapsAtLoc.length > 1;
 
     const icon = L.divIcon({
       className: '',
@@ -369,18 +379,23 @@ window.updateMapData = function() {
         background:${col.hex}; border:2px solid white;
         box-shadow:0 1px 4px rgba(0,0,0,0.3);
         transition: transform .1s;
-      " title="${trap.id}"></div>`,
+      "></div>`,
       iconSize:   [12, 12],
       iconAnchor: [6, 6],
     });
 
-    const marker = L.marker([trap.lat, trap.lon], { icon })
-      .on('click', () => openTrapDetail(trap, getCount(trap)));
+    const label = multi ? `${trapsAtLoc.length} traps` : first.id;
+    const meta  = multi
+      ? `${first.regionName} · ${trapsAtLoc.length} traps`
+      : `${first.regionName} · ${first.grower}`;
+
+    const marker = L.marker([first.lat, first.lon], { icon })
+      .on('click', () => openLocationDetail(trapsAtLoc));
 
     marker.bindPopup(`
-      <div class="popup-trap-id">${trap.id}</div>
-      <div class="popup-count ${col.cls}">${fmtCount(count)} moths</div>
-      <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
+      <div class="popup-trap-id">${label}</div>
+      <div class="popup-count ${col.cls}">${fmtCount(maxCount)} moths${multi ? ' (highest)' : ''}</div>
+      <div class="popup-meta">${meta}</div>
       <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
         Click for full season data
       </div>
@@ -410,74 +425,101 @@ window.highlightRegionOnMap = function(regionId) {
   document.getElementById('heatmap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-// ── Trap detail panel ─────────────────────────────────────────────────────
-function openTrapDetail(trap, currentCount) {
+// ── Location detail panel — shows all traps at a shared point ────────────
+function openLocationDetail(trapsAtLoc) {
   const panel = document.getElementById('trap-detail');
   if (!panel) return;
 
-  document.getElementById('td-trap-id').textContent  = trap.id;
-  document.getElementById('td-region').textContent   = trap.regionName;
-  document.getElementById('td-grower').textContent   = trap.grower;
-  document.getElementById('td-coords').textContent   = `${trap.lat.toFixed(4)}°N, ${Math.abs(trap.lon).toFixed(4)}°W`;
+  // Destroy any existing charts
+  trapDetailCharts.forEach(c => c && c.destroy());
+  trapDetailCharts = [];
 
-  panel.style.display = 'block';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const first  = trapsAtLoc[0];
+  const multi  = trapsAtLoc.length > 1;
 
-  // Render / update the trap detail chart
-  const ctx = document.getElementById('td-chart');
-  if (trapDetailChart) { trapDetailChart.destroy(); trapDetailChart = null; }
+  document.getElementById('td-region').textContent = first.regionName;
+  document.getElementById('td-coords').textContent =
+    `${first.lat.toFixed(4)}°N, ${Math.abs(first.lon).toFixed(4)}°W` +
+    (multi ? ` · ${trapsAtLoc.length} traps at this location` : ` · ${first.grower}`);
 
-  const data   = trap.weeks.map(w => w.count);
-  const labels = trap.weeks.map(w => fmtDate(w.date));
-  const col    = regionMeta(trap.region).color;
+  const container = document.getElementById('td-traps-container');
+  container.innerHTML = '';
 
-  trapDetailChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label:           'Moths / week',
-        data,
-        backgroundColor: data.map(v => v >= THRESHOLD_SINGLE ? '#E84747CC' : col + 'CC'),
-        borderRadius:    4,
-      }],
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        annotation: {
-          annotations: {
-            thr: {
-              type: 'line', yMin: THRESHOLD_SINGLE, yMax: THRESHOLD_SINGLE,
-              borderColor: '#C0392B', borderWidth: 1.5, borderDash: [5, 4],
-              label: {
-                display: true, content: 'Action threshold (5)',
-                position: 'start', backgroundColor: '#C0392B',
-                color: 'white', font: { size: 10 }, padding: { x: 6, y: 2 },
+  trapsAtLoc.forEach((trap, idx) => {
+    const canvasId = `td-chart-${idx}`;
+    const label    = [trap.id, trap.trapName, trap.grower].filter(Boolean).join(' — ');
+
+    const section = document.createElement('div');
+    section.className = 'td-trap-section';
+    section.innerHTML = `
+      <div class="td-trap-label">${label}</div>
+      <div class="chart-wrap" style="max-height:160px">
+        <canvas id="${canvasId}" height="70"></canvas>
+      </div>
+    `;
+    container.appendChild(section);
+
+    const data   = trap.weeks.map(w => w.count);
+    const labels = trap.weeks.map(w => fmtDate(w.date));
+    const col    = regionMeta(trap.region).color;
+
+    const chart = new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label:           'Moths / week',
+          data,
+          backgroundColor: data.map(v => v >= THRESHOLD_SINGLE ? '#E84747CC' : col + 'CC'),
+          borderRadius:    4,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          annotation: {
+            annotations: {
+              thr: {
+                type: 'line', yMin: THRESHOLD_SINGLE, yMax: THRESHOLD_SINGLE,
+                borderColor: '#C0392B', borderWidth: 1.5, borderDash: [5, 4],
+                label: {
+                  display: true, content: 'Action threshold (5)',
+                  position: 'start', backgroundColor: '#C0392B',
+                  color: 'white', font: { size: 10 }, padding: { x: 6, y: 2 },
+                },
               },
             },
           },
         },
+        scales: {
+          x: { ticks: { font: { size: 10 }, maxRotation: 35 } },
+          y: { beginAtZero: true, ticks: { font: { size: 10 } }, title: { display: true, text: 'Moths', font: { size: 10 } } },
+        },
       },
-      scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 35 } },
-        y: { beginAtZero: true, ticks: { font: { size: 10 } }, title: { display: true, text: 'Moths', font: { size: 10 } } },
-      },
-    },
+    });
+    trapDetailCharts.push(chart);
   });
+
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 window.closeTrapDetail = function() {
   const panel = document.getElementById('trap-detail');
   if (panel) panel.style.display = 'none';
-  if (trapDetailChart) { trapDetailChart.destroy(); trapDetailChart = null; }
+  trapDetailCharts.forEach(c => c && c.destroy());
+  trapDetailCharts = [];
 };
 
 // Full dashboard refresh — called after Excel upload so chart canvases are
 // properly destroyed before being recreated with new data.
 window.refreshDashboard = function() {
   if (mainChart) { mainChart.destroy(); mainChart = null; }
+  trapDetailCharts.forEach(c => c && c.destroy());
+  trapDetailCharts = [];
+  const detailPanel = document.getElementById('trap-detail');
+  if (detailPanel) detailPanel.style.display = 'none';
   Object.keys(sparklineCharts).forEach(k => {
     if (sparklineCharts[k]) sparklineCharts[k].destroy();
     delete sparklineCharts[k];

@@ -34,7 +34,7 @@
       <li><a href="#heatmap">Trap Map</a></li>
       <li><a href="#resources">Resources</a></li>
     </ul>
-    <div class="nav-season-tag">2025 Season</div>
+    <div class="nav-season-tag">2026 Season</div>
     <button class="nav-logout-btn" onclick="doLogout()" title="Sign out">Sign Out</button>
   </div>
 </nav>
@@ -88,7 +88,7 @@
       </div>
       <div class="hcard">
         <span class="hcard-value" id="hstat-peak">Jul 14</span>
-        <span class="hcard-label">Peak Flight (2025)</span>
+        <span class="hcard-label">Peak Flight (2026)</span>
       </div>
       <div class="hcard" id="hcard-dd">
         <span class="hcard-value" id="hstat-dd">—</span>
@@ -159,7 +159,7 @@
     <!-- Season-wide weekly chart -->
     <div class="chart-card">
       <div class="chart-card-header">
-        <h3>Weekly Average Catch — All Regions (2025)</h3>
+        <h3>Weekly Average Catch — All Regions (2026)</h3>
         <div class="chart-controls">
           <div class="chart-mode-toggle">
             <button class="chart-mode-btn active" id="btn-weekly" onclick="setChartMode('weekly')">Weekly</button>
@@ -205,17 +205,15 @@
     <!-- Trap detail popup (custom, outside map) -->
     <div class="trap-detail-panel" id="trap-detail" style="display:none">
       <div class="trap-detail-header">
-        <span id="td-trap-id" class="td-id"></span>
-        <span id="td-region" class="td-region-badge"></span>
+        <div class="td-header-main">
+          <span id="td-region" class="td-region-badge"></span>
+          <span id="td-coords" class="td-coords-text"></span>
+        </div>
         <button onclick="closeTrapDetail()" class="td-close">✕</button>
       </div>
       <div class="trap-detail-body">
-        <div class="td-meta">
-          <span id="td-grower"></span>
-          <span id="td-coords"></span>
-        </div>
-        <div class="chart-wrap" style="max-height:180px">
-          <canvas id="td-chart" height="80"></canvas>
+        <div id="td-traps-container">
+          <!-- Per-trap sections injected here by JS -->
         </div>
       </div>
     </div>
@@ -388,7 +386,6 @@
     <div class="footer-attrib">
       <p>Degree day weather data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · ARAO AgriMet</p>
       <p>Phenology model: <a href="https://uspest.org" target="_blank" rel="noopener">OSU/IPPC USPest.org</a></p>
-      <p class="footer-demo-note">⚠ Demo site — trap data is illustrative only</p>
     </div>
   </div>
 </footer>
