@@ -1,7 +1,13 @@
 /* ═══════════════════════════════════════════════════════
-   report.js — Portrait zone JPEG report generator
-   Canvas 1200×1980
-   Header → Stats → Map → Trend → GDD → Regional Summary → Footer
+   report.js — Combined all-zones JPEG report
+   Canvas 1200 × 5164 (tall scroll)
+
+   Header
+   Overall Region Map  (108–708)
+   All-Zones Season Chart  (716–1136)
+   × 5 zones  [ Title bar | Stats | Map ]  (1144–4674)
+   GDD Chart  (4674–5094)
+   Footer  (5102–5164)
    ═══════════════════════════════════════════════════════ */
 
 'use strict';
@@ -9,41 +15,62 @@
 window._currentDD = 0;
 
 const RPT_W = 1200;
-const RPT_H = 1980;
+const RPT_H = 5164;
 
-// Layout y positions (gap = 8px between sections)
-// Header:   0–100   Stats: 108–210   Map:  218–834
-// Trend: 842–1224   GDD: 1232–1642  Zone: 1650–1910
-// Footer: 1918–1980
+// Descriptive geographic names for each zone
+const ZONE_NAMES = {
+  '1': 'St Paul to Newburg',
+  '2': 'South of St Paul, West Woodburn',
+  '3': 'Greater Donald Area',
+  '4': 'South Canby',
+  '5': 'East of Woodburn, Hwy 211',
+};
 
-// ── Public entry points ───────────────────────────────────────────────────────
+// ── Public entry point ────────────────────────────────────────────────────────
 window.sendAllReports = async function() {
   const btn      = document.getElementById('report-send-btn');
   const statusEl = document.getElementById('report-status');
 
   btn.disabled           = true;
-  statusEl.textContent   = 'Building reports…';
+  statusEl.textContent   = 'Building combined report…';
   statusEl.className     = 'report-status';
   statusEl.style.display = 'inline-block';
 
   try {
-    const zonesWithData = REGIONS.filter(r =>
-      allTraps && allTraps.some(t => t.region === r.id)
-    );
-
-    if (!zonesWithData.length) {
+    if (!allTraps || !allTraps.length) {
       statusEl.textContent = '✗ No trap data loaded — upload your Excel file first';
       statusEl.className   = 'report-status error';
       btn.disabled = false;
       return;
     }
 
-    for (const region of zonesWithData) {
-      statusEl.textContent = `Building Zone ${region.id} report (loading map…)`;
-      await sendZoneReport(region.id);
+    statusEl.textContent = 'Generating report (loading maps…)';
+    const canvas      = await buildCombinedReportCanvas();
+    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    const jpegB64     = jpegDataUrl.split(',')[1];
+
+    const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
+    const weekLabel = latestWk
+      ? fmtDate(latestWk)
+      : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    statusEl.textContent = 'Sending email…';
+    const resp = await fetch('/api/send-report', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jpeg:       jpegB64,
+        regionName: 'All Zones',
+        weekDate:   weekLabel,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      throw new Error(body.error || resp.statusText);
     }
 
-    statusEl.textContent = `✓ ${zonesWithData.length} report(s) sent to morgan.curtis@valleyag.com`;
+    statusEl.textContent = '✓ Combined report sent';
     statusEl.className   = 'report-status success';
   } catch (err) {
     console.error('Report error:', err);
@@ -51,35 +78,6 @@ window.sendAllReports = async function() {
     statusEl.className   = 'report-status error';
   } finally {
     btn.disabled = false;
-  }
-};
-
-window.sendZoneReport = async function(regionId) {
-  const region = REGIONS.find(r => r.id === regionId);
-  if (!region) throw new Error(`Unknown zone ${regionId}`);
-
-  const canvas      = await buildReportCanvas(regionId, region);
-  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-  const jpegB64     = jpegDataUrl.split(',')[1];
-
-  const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
-  const weekLabel = latestWk
-    ? fmtDate(latestWk)
-    : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  const resp = await fetch('/api/send-report', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jpeg:       jpegB64,
-      regionName: `Zone ${regionId}`,
-      weekDate:   weekLabel,
-    }),
-  });
-
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-    throw new Error(`Zone ${regionId}: ${body.error || resp.statusText}`);
   }
 };
 
@@ -94,8 +92,8 @@ function loadImage(src) {
   });
 }
 
-// ── Canvas builder ────────────────────────────────────────────────────────────
-async function buildReportCanvas(regionId, region) {
+// ── Main canvas builder ───────────────────────────────────────────────────────
+async function buildCombinedReportCanvas() {
   const cvs = document.createElement('canvas');
   cvs.width  = RPT_W;
   cvs.height = RPT_H;
@@ -106,28 +104,42 @@ async function buildReportCanvas(regionId, region) {
 
   const logoImg = await loadImage('Valley-Ag-Logo-Web-Lg.png');
 
-  drawHeader(ctx, regionId, region, logoImg);
-  drawStatRow(ctx, regionId, 0, 108, RPT_W, 102);
-  await drawMapPanel(ctx, regionId, 0, 218, RPT_W, 616);
-  drawTrendPanel(ctx, regionId, region, 0, 842, RPT_W, 382);
-  drawGDDPanel(ctx, 0, 1232, RPT_W, 410);
-  drawZoneDataPanel(ctx, 0, 1650, RPT_W, 260);
+  drawHeader(ctx, logoImg);
+  await drawMapSection(ctx, allTraps, 'Overall Region Trap Counts', 0, 108, RPT_W, 600);
+  drawAllZonesSeasonChart(ctx, 0, 716, RPT_W, 420);
+
+  // 5 zone sections, each 706px tall (80 title + 8 + 102 stats + 8 + 500 map + 8 gap)
+  let zy = 1144;
+  for (const region of REGIONS) {
+    drawZoneTitleBar(ctx, region, 0, zy, RPT_W, 80);
+    drawStatRow(ctx, region.id, 0, zy + 88, RPT_W, 102);
+    await drawMapSection(ctx, regionTraps(region.id),
+      'Trap Locations — Current Week Count', 0, zy + 198, RPT_W, 500);
+    zy += 706;
+  }
+  // zy is now 4674 — start of GDD panel
+
+  drawGDDPanel(ctx, 0, 4674, RPT_W, 420);
   drawFooter(ctx);
 
   return cvs;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// HEADER
+// HEADER — multi-zone color stripe across bottom
 // ═════════════════════════════════════════════════════════════════════════════
-function drawHeader(ctx, regionId, region, logoImg) {
+function drawHeader(ctx, logoImg) {
   ctx.fillStyle = '#1A3D23';
   ctx.fillRect(0, 0, RPT_W, 96);
-  ctx.fillStyle = region.color;
-  ctx.fillRect(0, 96, RPT_W, 4);
+
+  // 5-segment color stripe
+  const segW = RPT_W / REGIONS.length;
+  REGIONS.forEach((r, i) => {
+    ctx.fillStyle = r.color;
+    ctx.fillRect(Math.floor(i * segW), 96, Math.ceil(segW), 4);
+  });
 
   let textX = 24;
-
   if (logoImg) {
     const maxH = 72, maxW = 200;
     const scale = Math.min(maxH / logoImg.height, maxW / logoImg.width);
@@ -142,15 +154,46 @@ function drawHeader(ctx, regionId, region, logoImg) {
 
   ctx.fillStyle = 'white';
   ctx.font      = 'bold 34px system-ui, -apple-system, sans-serif';
-  ctx.fillText(`Zone ${regionId}  ·  Filbertworm Trap Report`, textX, 46);
+  ctx.fillText('Filbertworm Trap Report — All Zones', textX, 46);
 
   const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
   const weekLabel = latestWk ? `Week of ${fmtDate(latestWk)}` : '';
-  const today     = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const today     = new Date().toLocaleDateString('en-US',
+    { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   ctx.font      = '20px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.65)';
-  ctx.fillText(`Valley Agronomics Donald  ·  ${weekLabel}  ·  Generated ${today}`, textX, 78);
+  ctx.fillText(
+    `Valley Agronomics Donald  ·  ${weekLabel}  ·  Generated ${today}`,
+    textX, 78
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ZONE TITLE BAR — colored left stripe + zone number + geographic name
+// ═════════════════════════════════════════════════════════════════════════════
+function drawZoneTitleBar(ctx, region, x, y, w, h) {
+  drawCard(ctx, x, y, w, h, 0);
+
+  // Left color accent bar
+  ctx.fillStyle = region.color;
+  ctx.fillRect(x, y, 12, h);
+
+  // Zone number in zone color
+  ctx.fillStyle = region.color;
+  ctx.font      = 'bold 36px system-ui, sans-serif';
+  const zoneLabel = `Zone ${region.id}`;
+  ctx.fillText(zoneLabel, x + 28, y + 52);
+  const labelW = ctx.measureText(zoneLabel).width;
+
+  // Divider
+  ctx.fillStyle = '#D0D8D4';
+  ctx.fillRect(x + 28 + labelW + 18, y + 16, 2, h - 32);
+
+  // Geographic name
+  ctx.fillStyle = '#2E4235';
+  ctx.font      = '28px system-ui, sans-serif';
+  ctx.fillText(ZONE_NAMES[region.id] || '', x + 28 + labelW + 38, y + 52);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -166,10 +209,10 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
     : 0;
 
   const boxes = [
-    { label: 'Traps Monitored', value: traps.length.toString(),            color: '#2B6E3B' },
-    { label: 'This Week Avg',   value: fmtCount(latestAvg) + ' / trap',    color: '#2B6E3B' },
-    { label: 'Season Peak Avg', value: fmtCount(peakAvg)   + ' / trap',    color: peakAvg       >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
-    { label: 'Highest Count',   value: fmtCount(highestCount) + ' moths',  color: highestCount  >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
+    { label: 'Traps Monitored', value: traps.length.toString(),           color: '#2B6E3B' },
+    { label: 'This Week Avg',   value: fmtCount(latestAvg) + ' / trap',   color: '#2B6E3B' },
+    { label: 'Season Peak Avg', value: fmtCount(peakAvg)   + ' / trap',   color: peakAvg       >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
+    { label: 'Highest Count',   value: fmtCount(highestCount) + ' moths', color: highestCount  >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B' },
   ];
 
   const gap  = 8;
@@ -188,19 +231,18 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// MAP PANEL — CartoDB Positron basemap + trap dots
+// MAP SECTION — shared renderer used by both overall map and per-zone maps
 // ═════════════════════════════════════════════════════════════════════════════
-async function drawMapPanel(ctx, regionId, x, y, w, h) {
+async function drawMapSection(ctx, traps, title, x, y, w, h) {
   drawCard(ctx, x, y, w, h, 0);
-  panelTitle(ctx, 'Trap Locations — Current Week Count', x, y, w);
+  panelTitle(ctx, title, x, y, w);
 
-  const traps    = regionTraps(regionId).filter(t => t.lat && t.lon);
-  const latestWk = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
+  const latestWk    = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
+  const locatedTraps = traps.filter(t => t.lat && t.lon);
 
-  // Map drawing area: 50px title bar, 40px legend row at bottom
   const mx = x + 8, my = y + 50, mw = w - 16, mh = h - 50 - 40;
 
-  if (!traps.length) {
+  if (!locatedTraps.length) {
     ctx.fillStyle = '#EDF2EF'; ctx.fillRect(mx, my, mw, mh);
     ctx.fillStyle = '#9E9E9E'; ctx.font = '18px system-ui, sans-serif';
     ctx.textAlign = 'center';
@@ -208,7 +250,8 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
     ctx.textAlign = 'left'; return;
   }
 
-  const lats = traps.map(t => t.lat), lons = traps.map(t => t.lon);
+  const lats   = locatedTraps.map(t => t.lat);
+  const lons   = locatedTraps.map(t => t.lon);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
   const latSpan = maxLat - minLat || 0.02, lonSpan = maxLon - minLon || 0.02;
@@ -226,8 +269,8 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
 
   const ftx0 = lonToTileX(vMinLon, zoom), ftx1 = lonToTileX(vMaxLon, zoom);
   const fty0 = latToTileY(vMaxLat, zoom), fty1 = latToTileY(vMinLat, zoom);
-  const tx0 = Math.floor(ftx0), tx1 = Math.ceil(ftx1);
-  const ty0 = Math.floor(fty0), ty1 = Math.ceil(fty1);
+  const tx0  = Math.floor(ftx0), tx1 = Math.ceil(ftx1);
+  const ty0  = Math.floor(fty0), ty1 = Math.ceil(fty1);
 
   const tc   = document.createElement('canvas');
   tc.width   = (tx1 - tx0) * TILE;
@@ -236,14 +279,15 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
   tctx.fillStyle = '#E8EFF5';
   tctx.fillRect(0, 0, tc.width, tc.height);
 
-  // CartoDB Positron — minimal light basemap, no distracting color fills
   const subs  = ['a', 'b', 'c', 'd'];
   const loads = [];
   for (let tx = tx0; tx < tx1; tx++) {
     for (let ty = ty0; ty < ty1; ty++) {
       const sub = subs[(tx + ty) % subs.length];
-      const url = `https://${sub}.basemaps.cartocdn.com/light_all/${zoom}/${tx}/${ty}.png`;
-      loads.push(loadTileImg(url, tctx, (tx - tx0) * TILE, (ty - ty0) * TILE));
+      loads.push(loadTileImg(
+        `https://${sub}.basemaps.cartocdn.com/light_all/${zoom}/${tx}/${ty}.png`,
+        tctx, (tx - tx0) * TILE, (ty - ty0) * TILE
+      ));
     }
   }
   await Promise.allSettled(loads);
@@ -282,7 +326,7 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
   ctx.save();
   ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
 
-  for (const trap of traps) {
+  for (const trap of locatedTraps) {
     const { x: px, y: py } = geoToPx(trap.lat, trap.lon);
     const count = trapAtWeek(trap, latestWk);
     const col   = colorForCount(count);
@@ -302,7 +346,7 @@ async function drawMapPanel(ctx, regionId, x, y, w, h) {
   ctx.restore();
   ctx.textAlign = 'left';
 
-  // Legend
+  // Count legend
   const legendItems = [
     { label: '0',           color: '#78C66A' },
     { label: '1–2',         color: '#E8C547' },
@@ -341,23 +385,31 @@ function loadTileImg(url, tctx, px, py) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// TREND CHART — zone avg + highest single trap
+// ALL-ZONES SEASON CHART — one avg line per zone + overall highest trap
 // ═════════════════════════════════════════════════════════════════════════════
-function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
+function drawAllZonesSeasonChart(ctx, x, y, w, h) {
   drawCard(ctx, x, y, w, h, 0);
-  panelTitle(ctx, `Zone ${regionId} — Season Trap Catch`, x, y, w);
+  panelTitle(ctx, 'Season Trap Catch — All Zones', x, y, w);
 
-  const traps = regionTraps(regionId);
-  const n     = SEASON_WEEKS.length;
+  const n = SEASON_WEEKS.length;
 
-  const avgData = SEASON_WEEKS.map(wk => regionWeeklyAvg(regionId, wk));
-  const maxData = SEASON_WEEKS.map(wk =>
-    traps.length ? Math.max(...traps.map(t => trapAtWeek(t, wk)), 0) : 0
+  // Compute per-region averages and overall highest single trap per week
+  const regionSeries = REGIONS.map(region => ({
+    region,
+    avg: SEASON_WEEKS.map(wk => regionWeeklyAvg(region.id, wk)),
+  }));
+  const overallMaxSeries = SEASON_WEEKS.map(wk =>
+    allTraps.length ? Math.max(...allTraps.map(t => trapAtWeek(t, wk)), 0) : 0
   );
 
-  const yMax = Math.max(...avgData, ...maxData, THRESHOLD_SINGLE + 1) * 1.15;
+  const allValues = [
+    ...regionSeries.flatMap(d => d.avg),
+    ...overallMaxSeries,
+    THRESHOLD_SINGLE + 1,
+  ];
+  const yMax = Math.max(...allValues) * 1.15;
 
-  const padL = 82, padR = 28, padT = 58, padB = 72;
+  const padL = 82, padR = 28, padT = 58, padB = 92;
   const cx = x + padL, cy = y + padT;
   const cw = w - padL - padR, ch = h - padT - padB;
 
@@ -378,10 +430,10 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
   ctx.save();
   ctx.translate(x + 20, cy + ch / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillStyle = '#9E9E9E'; ctx.font = '16px system-ui, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('Moths / trap / week', 0, 0);
+  ctx.fillText('Avg moths / trap / week', 0, 0);
   ctx.restore(); ctx.textAlign = 'left';
 
-  // Threshold line
+  // Action threshold
   const thrY = toY(THRESHOLD_SINGLE);
   ctx.beginPath(); ctx.setLineDash([6, 4]);
   ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 1.5;
@@ -391,26 +443,25 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
 
   if (!n) return;
 
-  // Area + avg line
-  ctx.beginPath();
-  avgData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
-  ctx.lineTo(toX(n - 1), cy + ch); ctx.lineTo(cx, cy + ch); ctx.closePath();
-  ctx.fillStyle = region.color + '22'; ctx.fill();
+  // Per-zone average lines
+  for (const { region, avg } of regionSeries) {
+    ctx.beginPath();
+    avg.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
+    ctx.strokeStyle = region.color; ctx.lineWidth = 2.5; ctx.stroke();
+    avg.forEach((v, i) => {
+      ctx.beginPath(); ctx.arc(toX(i), toY(v), 4, 0, Math.PI * 2);
+      ctx.fillStyle = region.color; ctx.fill();
+    });
+  }
 
-  ctx.beginPath();
-  avgData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
-  ctx.strokeStyle = region.color; ctx.lineWidth = 2.5; ctx.stroke();
-  avgData.forEach((v, i) => {
-    ctx.beginPath(); ctx.arc(toX(i), toY(v), 5, 0, Math.PI * 2);
-    ctx.fillStyle = region.color; ctx.fill();
-  });
-
-  // Max line (dashed orange)
+  // Overall highest single trap (dashed orange)
   ctx.beginPath(); ctx.setLineDash([5, 4]);
-  maxData.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
+  overallMaxSeries.forEach((v, i) => {
+    i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v));
+  });
   ctx.strokeStyle = '#E88C47'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-  maxData.forEach((v, i) => {
-    ctx.beginPath(); ctx.arc(toX(i), toY(v), 4.5, 0, Math.PI * 2);
+  overallMaxSeries.forEach((v, i) => {
+    ctx.beginPath(); ctx.arc(toX(i), toY(v), 3.5, 0, Math.PI * 2);
     ctx.fillStyle = '#E88C47'; ctx.fill();
   });
 
@@ -424,22 +475,35 @@ function drawTrendPanel(ctx, regionId, region, x, y, w, h) {
   });
   ctx.textAlign = 'left';
 
-  // Legend
-  const liy = cy + ch + 52;
-  let lx = cx;
-  ctx.font = '17px system-ui, sans-serif';
+  // Legend: zones 1–4 on row 1, zone 5 + highest trap on row 2
+  const liy1 = cy + ch + 46;
+  const liy2 = cy + ch + 70;
+  ctx.font    = '15px system-ui, sans-serif';
 
-  ctx.strokeStyle = region.color; ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.moveTo(lx, liy - 5); ctx.lineTo(lx + 30, liy - 5); ctx.stroke();
-  ctx.beginPath(); ctx.arc(lx + 15, liy - 5, 5, 0, Math.PI * 2);
-  ctx.fillStyle = region.color; ctx.fill();
-  ctx.fillStyle = '#444'; ctx.fillText('Zone average (moths/trap/wk)', lx + 38, liy + 1); lx += 300;
+  const legendItems = [
+    ...REGIONS.map(r => ({ label: `${r.name} avg`, color: r.color, dash: false })),
+    { label: 'Highest single trap (any zone)', color: '#E88C47', dash: true },
+  ];
 
-  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#E88C47'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(lx, liy - 5); ctx.lineTo(lx + 30, liy - 5); ctx.stroke(); ctx.setLineDash([]);
-  ctx.beginPath(); ctx.arc(lx + 15, liy - 5, 4.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#E88C47'; ctx.fill();
-  ctx.fillStyle = '#444'; ctx.fillText('Highest single trap', lx + 38, liy + 1);
+  legendItems.forEach((item, idx) => {
+    const row   = idx < 4 ? liy1 : liy2;
+    const col   = idx < 4 ? idx  : idx - 4;
+    const itemW = (cw + padR) / 4;
+    const lx    = cx + col * itemW;
+
+    if (item.dash) {
+      ctx.setLineDash([5, 4]);
+    }
+    ctx.strokeStyle = item.color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(lx, row - 5); ctx.lineTo(lx + 24, row - 5); ctx.stroke();
+    ctx.setLineDash([]);
+    if (!item.dash) {
+      ctx.beginPath(); ctx.arc(lx + 12, row - 5, 4, 0, Math.PI * 2);
+      ctx.fillStyle = item.color; ctx.fill();
+    }
+    ctx.fillStyle = '#444';
+    ctx.fillText(item.label, lx + 30, row + 1);
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -475,7 +539,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
   const toX = i => cx + (nPoints > 1 ? i / (nPoints - 1) : 0.5) * cw;
   const toY = v => cy + ch - (v / maxDD) * ch;
 
-  // Horizontal grid + Y labels
+  // Y grid + labels
   for (let dd = 0; dd <= maxDD; dd += 200) {
     const gy = toY(dd);
     if (gy < cy - 2 || gy > cy + ch + 2) continue;
@@ -491,7 +555,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
   ctx.fillText('Cumulative DD (base 50°F)', 0, 0);
   ctx.restore(); ctx.textAlign = 'left';
 
-  // Month vertical lines + X labels
+  // Month lines + labels
   const monthAbbr = ['', '', '', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'];
   projected.forEach((d, i) => {
     const dt = new Date(d.date + 'T12:00:00');
@@ -539,7 +603,7 @@ function drawGDDPanel(ctx, x, y, w, h) {
 
   const actualEnd = actual.length;
 
-  // Actual area fill + line
+  // Actual area + line
   if (actualEnd > 0) {
     ctx.beginPath();
     actual.forEach((d, i) => { i === 0 ? ctx.moveTo(toX(i), toY(d.cumDD)) : ctx.lineTo(toX(i), toY(d.cumDD)); });
@@ -593,62 +657,6 @@ function drawGDDPanel(ctx, x, y, w, h) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// REGIONAL SUMMARY — avg and highest count for every zone
-// ═════════════════════════════════════════════════════════════════════════════
-function drawZoneDataPanel(ctx, x, y, w, h) {
-  drawCard(ctx, x, y, w, h, 0);
-  panelTitle(ctx, 'Overall Regional Data', x, y, w);
-
-  const hasData = SEASON_WEEKS.length > 0;
-
-  const c0x = x + 24;   // Zone name
-  const c1x = x + 290;  // Peak avg
-  const c2x = x + 760;  // Highest single count
-
-  const hdrY = y + 68;
-  ctx.fillStyle = '#5A6E60';
-  ctx.font      = 'bold 26px system-ui, sans-serif';
-  ctx.fillText('Zone', c0x, hdrY);
-  ctx.fillText('Peak Average (moths / trap / week)', c1x, hdrY);
-  ctx.fillText('Highest Single Count', c2x, hdrY);
-
-  ctx.strokeStyle = '#D4E6D7'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(x + 1, hdrY + 10); ctx.lineTo(x + w - 1, hdrY + 10); ctx.stroke();
-
-  const rowH = 32;
-  REGIONS.forEach((region, i) => {
-    const ry    = hdrY + 36 + i * rowH;
-    const traps = regionTraps(region.id);
-
-    if (i % 2 === 0) {
-      ctx.fillStyle = '#F7FAF7';
-      ctx.fillRect(x + 1, ry - 18, w - 2, rowH);
-    }
-
-    ctx.beginPath(); ctx.arc(c0x + 8, ry - 5, 8, 0, Math.PI * 2);
-    ctx.fillStyle = region.color; ctx.fill();
-
-    ctx.fillStyle = '#2E4235'; ctx.font = 'bold 26px system-ui, sans-serif';
-    ctx.fillText(region.name, c0x + 22, ry);
-
-    if (!traps.length || !hasData) {
-      ctx.fillStyle = '#BDBDBD'; ctx.font = '26px system-ui, sans-serif';
-      ctx.fillText('No data', c1x, ry);
-    } else {
-      const peakAvg      = regionPeakAvg(region.id);
-      const highestCount = Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0);
-
-      ctx.font      = '26px system-ui, sans-serif';
-      ctx.fillStyle = peakAvg >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B';
-      ctx.fillText(fmtCount(peakAvg) + ' moths', c1x, ry);
-
-      ctx.fillStyle = highestCount >= THRESHOLD_SINGLE ? '#C0392B' : '#2B6E3B';
-      ctx.fillText(fmtCount(highestCount) + ' moths', c2x, ry);
-    }
-  });
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
 // FOOTER
 // ═════════════════════════════════════════════════════════════════════════════
 function drawFooter(ctx) {
@@ -657,10 +665,7 @@ function drawFooter(ctx) {
 
   ctx.fillStyle = 'rgba(255,255,255,0.50)';
   ctx.font      = '16px system-ui, sans-serif';
-  ctx.fillText(
-    'Valley Agronomics Donald  ·  Do not distribute',
-    24, RPT_H - 36
-  );
+  ctx.fillText('Valley Agronomics Donald  ·  Do not distribute', 24, RPT_H - 36);
   ctx.fillText(
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
     24, RPT_H - 14
