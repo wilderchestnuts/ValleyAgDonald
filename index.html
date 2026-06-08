@@ -180,7 +180,7 @@
   <div class="container">
     <div class="section-header">
       <h2>Map of Trap Counts</h2>
-      <p>Each marker is one trap. Color indicates <strong>weekly count</strong> for the selected week. Click any trap for full catch history.</p>
+      <p id="map-section-desc">Intensity map shows pest pressure by area without revealing individual farm locations. Switch to Trap Dots for full station detail.</p>
     </div>
 
     <!-- Map controls -->
@@ -191,6 +191,13 @@
           <option value="peak">Peak week (season high)</option>
           <!-- Week options added by JS -->
         </select>
+      </div>
+      <div class="map-control-group">
+        <span class="map-ctrl-label">View:</span>
+        <div class="chart-mode-toggle">
+          <button class="chart-mode-btn active" id="btn-heat" onclick="setMapView('heat')">Heat Map</button>
+          <button class="chart-mode-btn" id="btn-dots" onclick="setMapView('dots')">Trap Dots</button>
+        </div>
       </div>
       <div class="map-legend">
         <span class="legend-label">Low</span>

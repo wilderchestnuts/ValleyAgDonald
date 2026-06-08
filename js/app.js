@@ -38,6 +38,8 @@ let chartMode    = 'weekly';    // 'weekly' | 'rolling'
 let trapDetailCharts = [];
 let mainChart    = null;
 let ddChart      = null;
+let heatLayer    = null;
+let mapViewMode  = 'heat';   // 'heat' | 'dots'
 const sparklineCharts = {};
 
 // ── Boot ──────────────────────────────────────────────────────────────────
@@ -366,11 +368,33 @@ window.updateMapData = function() {
   const weekValue = selectEl ? selectEl.value : 'peak';
 
   markerGroup.clearLayers();
+  if (heatLayer) { leafletMap.removeLayer(heatLayer); heatLayer = null; }
 
   const getCount = trap =>
     weekValue === 'peak' ? trapPeak(trap) : trapAtWeek(trap, weekValue);
 
-  // Group traps by lat/lon to compute cluster offsets
+  if (mapViewMode === 'heat') {
+    const pts = allTraps.filter(t => t.lat && t.lon);
+    if (!pts.length) return;
+    const maxVal = Math.max(...pts.map(getCount), 1);
+    const points = pts.map(t => [t.lat, t.lon, Math.max(0.04, getCount(t) / maxVal)]);
+    heatLayer = L.heatLayer(points, {
+      radius:  55,
+      blur:    40,
+      max:     1,
+      minOpacity: 0.25,
+      gradient: {
+        0.0:  '#A8D9B5',
+        0.25: '#78C66A',
+        0.55: '#E8C547',
+        0.78: '#E84747',
+        1.0:  '#8B0000',
+      },
+    }).addTo(leafletMap);
+    return;
+  }
+
+  // Dots mode — cluster-spread individual markers
   const locationGroups = new Map();
   for (const trap of allTraps) {
     const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
@@ -416,6 +440,20 @@ window.updateMapData = function() {
       markerGroup.addLayer(marker);
     });
   }
+};
+
+window.setMapView = function(mode) {
+  mapViewMode = mode;
+  document.getElementById('btn-heat').classList.toggle('active', mode === 'heat');
+  document.getElementById('btn-dots').classList.toggle('active', mode === 'dots');
+  const desc = document.getElementById('map-section-desc');
+  if (desc) {
+    desc.innerHTML = mode === 'heat'
+      ? 'Intensity map shows pest pressure by area without revealing individual farm locations. Switch to Trap Dots for full station detail.'
+      : 'Each marker is one trap station. Color indicates weekly count. Click any marker for full catch history.';
+  }
+  if (mode === 'heat') closeTrapDetail();
+  updateMapData();
 };
 
 function populateWeekSelect() {
@@ -531,6 +569,7 @@ window.refreshDashboard = function() {
   if (mainChart) { mainChart.destroy(); mainChart = null; }
   trapDetailCharts.forEach(c => c && c.destroy());
   trapDetailCharts = [];
+  if (heatLayer && leafletMap) { leafletMap.removeLayer(heatLayer); heatLayer = null; }
   const detailPanel = document.getElementById('trap-detail');
   if (detailPanel) detailPanel.style.display = 'none';
   Object.keys(sparklineCharts).forEach(k => {

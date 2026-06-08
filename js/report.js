@@ -325,44 +325,11 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
     y: dstY + (latToTileY(lat, zoom) - fty0) / (fty1 - fty0) * dstH,
   });
 
+  // Heat intensity overlay — obscures individual farm locations
   ctx.save();
   ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
-
-  // Group traps by location so co-located traps spread into a cluster
-  const locGroups = new Map();
-  for (const trap of locatedTraps) {
-    const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
-    if (!locGroups.has(key)) locGroups.set(key, []);
-    locGroups.get(key).push(trap);
-  }
-
-  for (const group of locGroups.values()) {
-    const n       = group.length;
-    const clrR    = Math.max(18, 14 + n * 1.5); // cluster ring radius in px
-    const offsets = rptClusterOffsets(n, clrR);
-    const base    = geoToPx(group[0].lat, group[0].lon);
-
-    group.forEach((trap, i) => {
-      const px    = base.x + offsets[i][0];
-      const py    = base.y + offsets[i][1];
-      const count = trapAtWeek(trap, latestWk);
-      const col   = colorForCount(count);
-      const r     = 12;
-
-      ctx.beginPath(); ctx.arc(px, py, r + 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
-
-      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = col.hex; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
-
-      ctx.fillStyle = 'white'; ctx.font = 'bold 12px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(fmtCount(count), px, py + 4);
-    });
-  }
+  rptDrawHeatOverlay(ctx, locatedTraps, geoToPx, dstX, dstY, dstW, dstH, latestWk);
   ctx.restore();
-  ctx.textAlign = 'left';
 
   // Count legend
   const legendItems = [
@@ -688,6 +655,51 @@ function drawFooter(ctx) {
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
     24, RPT_H - 14
   );
+}
+
+// Heat intensity overlay: paints soft radial blobs per trap, blending into
+// a smooth gradient. Individual farm locations are not legible.
+function rptDrawHeatOverlay(ctx, traps, geoToPx, dstX, dstY, dstW, dstH, latestWk) {
+  const off   = document.createElement('canvas');
+  off.width   = Math.ceil(dstW);
+  off.height  = Math.ceil(dstH);
+  const octx  = off.getContext('2d');
+
+  const maxCount = Math.max(...traps.map(t => trapAtWeek(t, latestWk)), 1);
+  // Blob radius scales with map size; larger maps need bigger blobs to fill gaps
+  const blobR = Math.max(55, Math.min(dstW, dstH) * 0.13);
+
+  for (const trap of traps) {
+    const count     = trapAtWeek(trap, latestWk);
+    const { x, y }  = geoToPx(trap.lat, trap.lon);
+    const px        = x - dstX;
+    const py        = y - dstY;
+    const intensity = count / maxCount;
+    const r         = blobR * (0.55 + intensity * 0.55);
+
+    // Color tier by count
+    let rgb;
+    if      (count < 1.5) rgb = '120,198,106';   // green
+    else if (count < 3)   rgb = '232,197,71';    // yellow
+    else if (count < 5)   rgb = '232,140,71';    // orange
+    else if (count < 10)  rgb = '232,71,71';     // red
+    else                  rgb = '139,0,0';       // dark red
+
+    const alpha = 0.18 + intensity * 0.44;
+    const grad  = octx.createRadialGradient(px, py, 0, px, py, r);
+    grad.addColorStop(0,    `rgba(${rgb},${alpha.toFixed(2)})`);
+    grad.addColorStop(0.45, `rgba(${rgb},${(alpha * 0.55).toFixed(2)})`);
+    grad.addColorStop(1,    `rgba(${rgb},0)`);
+
+    octx.beginPath();
+    octx.arc(px, py, r, 0, Math.PI * 2);
+    octx.fillStyle = grad;
+    octx.fill();
+  }
+
+  ctx.globalAlpha = 0.88;
+  ctx.drawImage(off, dstX, dstY);
+  ctx.globalAlpha = 1;
 }
 
 // Returns [dx, dy] pixel offsets for N dots arranged in a ring of radius r.
