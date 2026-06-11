@@ -13,7 +13,7 @@
 window._currentDD = 0;
 
 const RPT_W        = 1200;
-const RPT_H_OVERALL = 1630;
+const RPT_H_OVERALL = 1734;
 const RPT_H_ZONE    = 876;
 
 // Descriptive geographic names for each zone
@@ -160,8 +160,8 @@ async function buildOverallCanvas() {
   const logoImg = await loadImage('Valley-Ag-Logo-Web-Lg.png');
   drawHeader(ctx, logoImg, 'All Zones');
   await drawMapSection(ctx, allTraps, 'Overall Region Trap Counts', 0, 108, RPT_W, 600);
-  drawAllZonesSeasonChart(ctx, 0, 716, RPT_W, 420);
-  drawGDDPanel(ctx, 0, 1144, RPT_W, 420);
+  drawAllZonesSeasonChart(ctx, 0, 716, RPT_W, 520);
+  drawGDDPanel(ctx, 0, 1244, RPT_W, 420);
   drawFooter(ctx, RPT_H_OVERALL);
 
   return cvs;
@@ -469,8 +469,25 @@ function loadTileImg(url, tctx, px, py) {
   });
 }
 
+// Catmull-Rom spline: draws a smooth curve through all points via bezier approx.
+function smoothCurve(ctx, pts, tension = 0.35) {
+  if (pts.length < 2) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    ctx.bezierCurveTo(
+      p1.x + (p2.x - p0.x) * tension, p1.y + (p2.y - p0.y) * tension,
+      p2.x - (p3.x - p1.x) * tension, p2.y - (p3.y - p1.y) * tension,
+      p2.x, p2.y
+    );
+  }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
-// ALL-ZONES SEASON CHART — one avg line per zone + overall highest trap
+// ALL-ZONES SEASON CHART — smooth avg line per zone
 // ═════════════════════════════════════════════════════════════════════════════
 function drawAllZonesSeasonChart(ctx, x, y, w, h) {
   drawCard(ctx, x, y, w, h, 0);
@@ -478,23 +495,18 @@ function drawAllZonesSeasonChart(ctx, x, y, w, h) {
 
   const n = SEASON_WEEKS.length;
 
-  // Compute per-region averages and overall highest single trap per week
   const regionSeries = REGIONS.map(region => ({
     region,
     avg: SEASON_WEEKS.map(wk => regionWeeklyAvg(region.id, wk)),
   }));
-  const overallMaxSeries = SEASON_WEEKS.map(wk =>
-    allTraps.length ? Math.max(...allTraps.map(t => trapAtWeek(t, wk)), 0) : 0
-  );
 
   const allValues = [
     ...regionSeries.flatMap(d => d.avg),
-    ...overallMaxSeries,
     THRESHOLD_SINGLE + 1,
   ];
   const yMax = Math.max(...allValues) * 1.15;
 
-  const padL = 82, padR = 28, padT = 58, padB = 92;
+  const padL = 82, padR = 28, padT = 58, padB = 72;
   const cx = x + padL, cy = y + padT;
   const cw = w - padL - padR, ch = h - padT - padB;
 
@@ -528,27 +540,17 @@ function drawAllZonesSeasonChart(ctx, x, y, w, h) {
 
   if (!n) return;
 
-  // Per-zone average lines
+  // Per-zone smooth curves
   for (const { region, avg } of regionSeries) {
+    const pts = avg.map((v, i) => ({ x: toX(i), y: toY(v) }));
     ctx.beginPath();
-    avg.forEach((v, i) => { i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v)); });
+    smoothCurve(ctx, pts, 0.35);
     ctx.strokeStyle = region.color; ctx.lineWidth = 2.5; ctx.stroke();
-    avg.forEach((v, i) => {
-      ctx.beginPath(); ctx.arc(toX(i), toY(v), 4, 0, Math.PI * 2);
+    pts.forEach(p => {
+      ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
       ctx.fillStyle = region.color; ctx.fill();
     });
   }
-
-  // Overall highest single trap (dashed orange)
-  ctx.beginPath(); ctx.setLineDash([5, 4]);
-  overallMaxSeries.forEach((v, i) => {
-    i === 0 ? ctx.moveTo(toX(i), toY(v)) : ctx.lineTo(toX(i), toY(v));
-  });
-  ctx.strokeStyle = '#E88C47'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-  overallMaxSeries.forEach((v, i) => {
-    ctx.beginPath(); ctx.arc(toX(i), toY(v), 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#E88C47'; ctx.fill();
-  });
 
   // X labels
   const step = Math.max(1, Math.ceil(n / 8));
@@ -560,34 +562,18 @@ function drawAllZonesSeasonChart(ctx, x, y, w, h) {
   });
   ctx.textAlign = 'left';
 
-  // Legend: zones 1–4 on row 1, zone 5 + highest trap on row 2
-  const liy1 = cy + ch + 46;
-  const liy2 = cy + ch + 70;
-  ctx.font    = '15px system-ui, sans-serif';
-
-  const legendItems = [
-    ...REGIONS.map(r => ({ label: `${r.name} avg`, color: r.color, dash: false })),
-    { label: 'Highest single trap (any zone)', color: '#E88C47', dash: true },
-  ];
-
-  legendItems.forEach((item, idx) => {
-    const row   = idx < 4 ? liy1 : liy2;
-    const col   = idx < 4 ? idx  : idx - 4;
-    const itemW = (cw + padR) / 4;
-    const lx    = cx + col * itemW;
-
-    if (item.dash) {
-      ctx.setLineDash([5, 4]);
-    }
-    ctx.strokeStyle = item.color; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.moveTo(lx, row - 5); ctx.lineTo(lx + 24, row - 5); ctx.stroke();
-    ctx.setLineDash([]);
-    if (!item.dash) {
-      ctx.beginPath(); ctx.arc(lx + 12, row - 5, 4, 0, Math.PI * 2);
-      ctx.fillStyle = item.color; ctx.fill();
-    }
+  // Legend — all 5 zones in one row
+  const liy  = cy + ch + 50;
+  const itemW = cw / REGIONS.length;
+  ctx.font = '15px system-ui, sans-serif';
+  REGIONS.forEach((r, idx) => {
+    const lx = cx + idx * itemW;
+    ctx.strokeStyle = r.color; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(lx, liy - 5); ctx.lineTo(lx + 24, liy - 5); ctx.stroke();
+    ctx.beginPath(); ctx.arc(lx + 12, liy - 5, 4, 0, Math.PI * 2);
+    ctx.fillStyle = r.color; ctx.fill();
     ctx.fillStyle = '#444';
-    ctx.fillText(item.label, lx + 30, row + 1);
+    ctx.fillText(`${r.name} avg`, lx + 30, liy + 1);
   });
 }
 
