@@ -1,21 +1,20 @@
 /* ═══════════════════════════════════════════════════════
-   report.js — Combined all-zones JPEG report
-   Canvas 1200 × 5164 (tall scroll)
+   report.js — Filbertworm JPEG report generator
+   Produces 6 separate images: 1 overall + 1 per zone
 
-   Header
-   Overall Region Map  (108–708)
-   All-Zones Season Chart  (716–1136)
-   × 5 zones  [ Title bar | Stats | Map ]  (1144–4674)
-   GDD Chart  (4674–5094)
-   Footer  (5102–5164)
+   Overall (1200 × 1630):
+     Header | Overall Map | Season Chart | GDD | Footer
+   Zone (1200 × 876):
+     Header | Zone Title | Stats | Zone Map | Footer
    ═══════════════════════════════════════════════════════ */
 
 'use strict';
 
 window._currentDD = 0;
 
-const RPT_W = 1200;
-const RPT_H = 5164;
+const RPT_W        = 1200;
+const RPT_H_OVERALL = 1630;
+const RPT_H_ZONE    = 876;
 
 // Descriptive geographic names for each zone
 const ZONE_NAMES = {
@@ -26,7 +25,57 @@ const ZONE_NAMES = {
   '5': 'East of Woodburn, Hwy 211',
 };
 
-// ── Public entry point ────────────────────────────────────────────────────────
+// ── Download all 6 JPEGs locally (for texting) ───────────────────────────────
+window.downloadAllReports = async function() {
+  const btn      = document.getElementById('report-dl-btn');
+  const statusEl = document.getElementById('report-status');
+
+  btn.disabled           = true;
+  statusEl.textContent   = 'Building reports…';
+  statusEl.className     = 'report-status';
+  statusEl.style.display = 'inline-block';
+
+  try {
+    if (!allTraps || !allTraps.length) throw new Error('No trap data loaded — upload your Excel file first');
+
+    const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
+    const weekLabel = latestWk
+      ? fmtDate(latestWk).replace(/\s/g, '-')
+      : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).replace(/\s/g, '-');
+
+    statusEl.textContent = 'Building overall map… (1/6)';
+    const overallCvs = await buildOverallCanvas();
+    triggerJpegDownload(overallCvs, `FilbertTrap-Overall-${weekLabel}.jpg`);
+
+    for (let i = 0; i < REGIONS.length; i++) {
+      const region = REGIONS[i];
+      statusEl.textContent = `Building Zone ${region.id}… (${i + 2}/6)`;
+      await new Promise(r => setTimeout(r, 400));
+      const zoneCvs = await buildZoneCanvas(region);
+      triggerJpegDownload(zoneCvs, `FilbertTrap-Zone${region.id}-${weekLabel}.jpg`);
+    }
+
+    statusEl.textContent = '✓ 6 report images saved — check your Downloads folder';
+    statusEl.className   = 'report-status success';
+  } catch (err) {
+    console.error('Report download error:', err);
+    statusEl.textContent = '✗ ' + err.message;
+    statusEl.className   = 'report-status error';
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function triggerJpegDownload(canvas, filename) {
+  const a  = document.createElement('a');
+  a.href   = canvas.toDataURL('image/jpeg', 0.85);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// ── Email the combined all-zones report ──────────────────────────────────────
 window.sendAllReports = async function() {
   const btn      = document.getElementById('report-send-btn');
   const statusEl = document.getElementById('report-status');
@@ -37,17 +86,11 @@ window.sendAllReports = async function() {
   statusEl.style.display = 'inline-block';
 
   try {
-    if (!allTraps || !allTraps.length) {
-      statusEl.textContent = '✗ No trap data loaded — upload your Excel file first';
-      statusEl.className   = 'report-status error';
-      btn.disabled = false;
-      return;
-    }
+    if (!allTraps || !allTraps.length) throw new Error('No trap data loaded — upload your Excel file first');
 
     statusEl.textContent = 'Generating report (loading maps…)';
-    const canvas      = await buildCombinedReportCanvas();
-    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-    const jpegB64     = jpegDataUrl.split(',')[1];
+    const canvas  = await buildOverallCanvas();
+    const jpegB64 = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
 
     const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
     const weekLabel = latestWk
@@ -58,11 +101,7 @@ window.sendAllReports = async function() {
     const resp = await fetch('/api/send-report', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jpeg:       jpegB64,
-        regionName: 'All Zones',
-        weekDate:   weekLabel,
-      }),
+      body:    JSON.stringify({ jpeg: jpegB64, regionName: 'All Zones', weekDate: weekLabel }),
     });
 
     if (!resp.ok) {
@@ -92,35 +131,43 @@ function loadImage(src) {
   });
 }
 
-// ── Main canvas builder ───────────────────────────────────────────────────────
-async function buildCombinedReportCanvas() {
+// ── Overall canvas: header + all-zones map + season chart + GDD + footer ─────
+async function buildOverallCanvas() {
   const cvs = document.createElement('canvas');
   cvs.width  = RPT_W;
-  cvs.height = RPT_H;
+  cvs.height = RPT_H_OVERALL;
   const ctx  = cvs.getContext('2d');
 
   ctx.fillStyle = '#F5F8F5';
-  ctx.fillRect(0, 0, RPT_W, RPT_H);
+  ctx.fillRect(0, 0, RPT_W, RPT_H_OVERALL);
 
   const logoImg = await loadImage('Valley-Ag-Logo-Web-Lg.png');
-
-  drawHeader(ctx, logoImg);
+  drawHeader(ctx, logoImg, 'All Zones');
   await drawMapSection(ctx, allTraps, 'Overall Region Trap Counts', 0, 108, RPT_W, 600);
   drawAllZonesSeasonChart(ctx, 0, 716, RPT_W, 420);
+  drawGDDPanel(ctx, 0, 1144, RPT_W, 420);
+  drawFooter(ctx, RPT_H_OVERALL);
 
-  // 5 zone sections, each 706px tall (80 title + 8 + 102 stats + 8 + 500 map + 8 gap)
-  let zy = 1144;
-  for (const region of REGIONS) {
-    drawZoneTitleBar(ctx, region, 0, zy, RPT_W, 80);
-    drawStatRow(ctx, region.id, 0, zy + 88, RPT_W, 102);
-    await drawMapSection(ctx, regionTraps(region.id),
-      'Trap Locations — Current Week Count', 0, zy + 198, RPT_W, 500);
-    zy += 706;
-  }
-  // zy is now 4674 — start of GDD panel
+  return cvs;
+}
 
-  drawGDDPanel(ctx, 0, 4674, RPT_W, 420);
-  drawFooter(ctx);
+// ── Per-zone canvas: header + title + stats + zone map + footer ───────────────
+async function buildZoneCanvas(region) {
+  const cvs = document.createElement('canvas');
+  cvs.width  = RPT_W;
+  cvs.height = RPT_H_ZONE;
+  const ctx  = cvs.getContext('2d');
+
+  ctx.fillStyle = '#F5F8F5';
+  ctx.fillRect(0, 0, RPT_W, RPT_H_ZONE);
+
+  const logoImg = await loadImage('Valley-Ag-Logo-Web-Lg.png');
+  drawHeader(ctx, logoImg, `Zone ${region.id} — ${ZONE_NAMES[region.id] || ''}`);
+  drawZoneTitleBar(ctx, region, 0, 108, RPT_W, 80);
+  drawStatRow(ctx, region.id, 0, 196, RPT_W, 102);
+  await drawMapSection(ctx, regionTraps(region.id),
+    'Trap Locations — Current Week Count', 0, 306, RPT_W, 500);
+  drawFooter(ctx, RPT_H_ZONE);
 
   return cvs;
 }
@@ -128,7 +175,7 @@ async function buildCombinedReportCanvas() {
 // ═════════════════════════════════════════════════════════════════════════════
 // HEADER — multi-zone color stripe across bottom
 // ═════════════════════════════════════════════════════════════════════════════
-function drawHeader(ctx, logoImg) {
+function drawHeader(ctx, logoImg, title = 'All Zones') {
   ctx.fillStyle = '#1A3D23';
   ctx.fillRect(0, 0, RPT_W, 96);
 
@@ -154,7 +201,7 @@ function drawHeader(ctx, logoImg) {
 
   ctx.fillStyle = 'white';
   ctx.font      = 'bold 34px system-ui, -apple-system, sans-serif';
-  ctx.fillText('Filbertworm Trap Report — All Zones', textX, 46);
+  ctx.fillText(`Filbertworm Trap Report — ${title}`, textX, 46);
 
   const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
   const weekLabel = latestWk ? `Week of ${fmtDate(latestWk)}` : '';
@@ -255,7 +302,7 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
   // Pre-compute jittered positions so the viewport bbox covers the jittered dots
   const jittered = locatedTraps.map(trap => {
     const rand  = seededRand(trap.id);
-    const miles = 2 + rand() * 6;
+    const miles = 1 + rand() * 4;
     const angle = rand() * Math.PI * 2;
     return {
       trap,
@@ -675,16 +722,16 @@ function drawGDDPanel(ctx, x, y, w, h) {
 // ═════════════════════════════════════════════════════════════════════════════
 // FOOTER
 // ═════════════════════════════════════════════════════════════════════════════
-function drawFooter(ctx) {
+function drawFooter(ctx, canvasH) {
   ctx.fillStyle = '#1A3D23';
-  ctx.fillRect(0, RPT_H - 62, RPT_W, 62);
+  ctx.fillRect(0, canvasH - 62, RPT_W, 62);
 
   ctx.fillStyle = 'rgba(255,255,255,0.50)';
   ctx.font      = '16px system-ui, sans-serif';
-  ctx.fillText('Valley Agronomics Donald  ·  Do not distribute', 24, RPT_H - 36);
+  ctx.fillText('Valley Agronomics Donald  ·  Do not distribute', 24, canvasH - 36);
   ctx.fillText(
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
-    24, RPT_H - 14
+    24, canvasH - 14
   );
 }
 
