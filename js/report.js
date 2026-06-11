@@ -19,7 +19,7 @@ const RPT_H = 5164;
 
 // Descriptive geographic names for each zone
 const ZONE_NAMES = {
-  '1': 'St Paul to Newburg',
+  '1': 'St Paul to Newberg',
   '2': 'South of St Paul, West Woodburn',
   '3': 'Greater Donald Area',
   '4': 'South Canby',
@@ -204,7 +204,7 @@ function drawStatRow(ctx, regionId, x, y, w, h) {
   const latestWk     = SEASON_WEEKS[SEASON_WEEKS.length - 1] || SEASON_WEEKS[0];
   const latestAvg    = regionWeeklyAvg(regionId, latestWk);
   const highestCount = traps.length
-    ? Math.max(...traps.flatMap(t => t.weeks.map(wk => wk.count)), 0)
+    ? Math.max(...traps.map(t => trapAtWeek(t, latestWk)), 0)
     : 0;
   const trapsZero  = traps.filter(t => trapAtWeek(t, latestWk) === 0).length;
   const trapsOver5 = traps.filter(t => trapAtWeek(t, latestWk) >= THRESHOLD_SINGLE).length;
@@ -255,7 +255,7 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
   // Pre-compute jittered positions so the viewport bbox covers the jittered dots
   const jittered = locatedTraps.map(trap => {
     const rand  = seededRand(trap.id);
-    const miles = 1 + rand() * 4;
+    const miles = 2 + rand() * 6;
     const angle = rand() * Math.PI * 2;
     return {
       trap,
@@ -345,18 +345,18 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
     const { x: px, y: py } = geoToPx(jLat, jLon);
     const count = trapAtWeek(trap, latestWk);
     const col   = colorForCount(count);
-    const r     = 16;
+    const r     = 10;
 
-    ctx.beginPath(); ctx.arc(px, py, r + 3, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(px, py, r + 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
 
     ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fillStyle = col.hex; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.5; ctx.stroke();
 
-    ctx.fillStyle = 'white'; ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillStyle = 'white'; ctx.font = 'bold 10px system-ui, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(fmtCount(count), px, py + 5);
+    ctx.fillText(fmtCount(count), px, py + 4);
   }
 
   ctx.restore();

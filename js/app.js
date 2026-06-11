@@ -415,14 +415,12 @@ window.updateMapData = function() {
       const icon = L.divIcon({
         className: '',
         html: `<div style="
-          width:32px; height:32px; border-radius:50%;
-          background:${col.hex}; border:3px solid white;
-          box-shadow:0 1px 5px rgba(0,0,0,0.4);
-          display:flex; align-items:center; justify-content:center;
-          font:bold 12px system-ui,sans-serif; color:white;
-        ">${fmtCount(count)}</div>`,
-        iconSize:   [32, 32],
-        iconAnchor: [16, 16],
+          width:12px; height:12px; border-radius:50%;
+          background:${col.hex}; border:2px solid white;
+          box-shadow:0 1px 4px rgba(0,0,0,0.3);
+        "></div>`,
+        iconSize:   [12, 12],
+        iconAnchor: [6, 6],
       });
 
       const clusterNote = n > 1 ? ` (${i + 1}/${n} at this location)` : '';
