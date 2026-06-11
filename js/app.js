@@ -100,15 +100,16 @@ function fmtDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// Returns [lat, lon] offsets for N traps clustered at one point.
-// rLat in degrees; rLon scaled to appear round at ~lat 45°.
-function clusterLatLonOffsets(n, rLat) {
-  if (n <= 1) return [[0, 0]];
-  const rLon = rLat * 1.41;
-  return Array.from({ length: n }, (_, i) => {
-    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
-    return [Math.cos(angle) * rLat, Math.sin(angle) * rLon];
-  });
+// LCG seeded by trap ID — same algorithm as report.js for consistent jitter
+function seededRand(trapId) {
+  let s = 0;
+  for (let i = 0; i < trapId.length; i++) {
+    s = (s * 31 + trapId.charCodeAt(i)) & 0xFFFFFFFF;
+  }
+  return function() {
+    s = (Math.imul(s, 1664525) + 1013904223) & 0xFFFFFFFF;
+    return (s >>> 0) / 0xFFFFFFFF;
+  };
 }
 
 function regionMeta(id) {
@@ -394,51 +395,43 @@ window.updateMapData = function() {
     return;
   }
 
-  // Dots mode — cluster-spread individual markers
-  const locationGroups = new Map();
+  // Dots mode — each trap jittered 1-5 miles in a seeded-random direction
   for (const trap of allTraps) {
-    const key = `${trap.lat.toFixed(6)},${trap.lon.toFixed(6)}`;
-    if (!locationGroups.has(key)) locationGroups.set(key, []);
-    locationGroups.get(key).push(trap);
-  }
+    if (!trap.lat && !trap.lon) continue;
+    const rand  = seededRand(trap.id);
+    const miles = 1 + rand() * 4;
+    const angle = rand() * Math.PI * 2;
+    const lat   = trap.lat + (miles * Math.cos(angle)) / 69;
+    const lon   = trap.lon + (miles * Math.sin(angle)) / (69 * Math.cos(trap.lat * Math.PI / 180));
+    const count = getCount(trap);
+    const col   = colorForCount(count);
 
-  for (const trapsAtLoc of locationGroups.values()) {
-    const n       = trapsAtLoc.length;
-    const offsets = clusterLatLonOffsets(n, 0.0015);
-
-    trapsAtLoc.forEach((trap, i) => {
-      const lat   = trap.lat + offsets[i][0];
-      const lon   = trap.lon + offsets[i][1];
-      const count = getCount(trap);
-      const col   = colorForCount(count);
-
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:12px; height:12px; border-radius:50%;
-          background:${col.hex}; border:2px solid white;
-          box-shadow:0 1px 4px rgba(0,0,0,0.3);
-          transition: transform .1s;
-        "></div>`,
-        iconSize:   [12, 12],
-        iconAnchor: [6, 6],
-      });
-
-      const clusterNote = n > 1 ? ` (${i + 1}/${n} at this location)` : '';
-      const marker = L.marker([lat, lon], { icon })
-        .on('click', () => openLocationDetail([trap]));
-
-      marker.bindPopup(`
-        <div class="popup-trap-id">${trap.id}${clusterNote}</div>
-        <div class="popup-count ${col.cls}">${fmtCount(count)} moths</div>
-        <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
-        <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
-          Click for full season data
-        </div>
-      `);
-
-      markerGroup.addLayer(marker);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:32px; height:32px; border-radius:50%;
+        background:${col.hex}; border:3px solid white;
+        box-shadow:0 1px 5px rgba(0,0,0,0.4);
+        display:flex; align-items:center; justify-content:center;
+        font:bold 12px system-ui,sans-serif; color:white;
+      ">${fmtCount(count)}</div>`,
+      iconSize:   [32, 32],
+      iconAnchor: [16, 16],
     });
+
+    const marker = L.marker([lat, lon], { icon })
+      .on('click', () => openLocationDetail([trap]));
+
+    marker.bindPopup(`
+      <div class="popup-trap-id">${trap.id}</div>
+      <div class="popup-count ${col.cls}">${fmtCount(count)} moths</div>
+      <div class="popup-meta">${trap.regionName} · ${trap.grower}</div>
+      <div class="popup-meta" style="margin-top:4px; font-size:0.75rem; color:#888">
+        Click for full season data
+      </div>
+    `);
+
+    markerGroup.addLayer(marker);
   }
 };
 
@@ -471,8 +464,19 @@ function populateWeekSelect() {
 
 window.highlightRegionOnMap = function(regionId) {
   if (!leafletMap) return;
-  const meta = regionMeta(regionId);
-  leafletMap.setView([meta.lat, meta.lon], 12, { animate: true, duration: 0.8 });
+  const traps = regionTraps(regionId).filter(t => t.lat || t.lon);
+  if (traps.length) {
+    const lats = traps.map(t => t.lat);
+    const lons = traps.map(t => t.lon);
+    const bounds = L.latLngBounds(
+      [Math.min(...lats) - 0.05, Math.min(...lons) - 0.08],
+      [Math.max(...lats) + 0.05, Math.max(...lons) + 0.08],
+    );
+    leafletMap.fitBounds(bounds, { animate: true, duration: 0.8 });
+  } else {
+    const meta = regionMeta(regionId);
+    leafletMap.setView([meta.lat, meta.lon], 10, { animate: true, duration: 0.8 });
+  }
   document.getElementById('heatmap').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
