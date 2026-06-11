@@ -75,33 +75,49 @@ function triggerJpegDownload(canvas, filename) {
   document.body.removeChild(a);
 }
 
-// ── Email the combined all-zones report ──────────────────────────────────────
+// ── Email all 6 reports as attachments in one message ───────────────────────
 window.sendAllReports = async function() {
   const btn      = document.getElementById('report-send-btn');
   const statusEl = document.getElementById('report-status');
 
   btn.disabled           = true;
-  statusEl.textContent   = 'Building combined report…';
+  statusEl.textContent   = 'Building reports…';
   statusEl.className     = 'report-status';
   statusEl.style.display = 'inline-block';
 
   try {
     if (!allTraps || !allTraps.length) throw new Error('No trap data loaded — upload your Excel file first');
 
-    statusEl.textContent = 'Generating report (loading maps…)';
-    const canvas  = await buildOverallCanvas();
-    const jpegB64 = canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
-
     const latestWk  = SEASON_WEEKS[SEASON_WEEKS.length - 1] || '';
     const weekLabel = latestWk
       ? fmtDate(latestWk)
       : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const fileWeek = weekLabel.replace(/\s/g, '-');
+
+    const jpegs = [];
+
+    statusEl.textContent = 'Building overall map… (1/6)';
+    const overallCvs = await buildOverallCanvas();
+    jpegs.push({
+      base64:   overallCvs.toDataURL('image/jpeg', 0.82).split(',')[1],
+      filename: `FilbertTrap-Overall-${fileWeek}.jpg`,
+    });
+
+    for (let i = 0; i < REGIONS.length; i++) {
+      const region = REGIONS[i];
+      statusEl.textContent = `Building Zone ${region.id}… (${i + 2}/6)`;
+      const zoneCvs = await buildZoneCanvas(region);
+      jpegs.push({
+        base64:   zoneCvs.toDataURL('image/jpeg', 0.82).split(',')[1],
+        filename: `FilbertTrap-Zone${region.id}-${fileWeek}.jpg`,
+      });
+    }
 
     statusEl.textContent = 'Sending email…';
     const resp = await fetch('/api/send-report', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ jpeg: jpegB64, regionName: 'All Zones', weekDate: weekLabel }),
+      body:    JSON.stringify({ jpegs, regionName: 'All Zones', weekDate: weekLabel }),
     });
 
     if (!resp.ok) {
@@ -109,7 +125,7 @@ window.sendAllReports = async function() {
       throw new Error(body.error || resp.statusText);
     }
 
-    statusEl.textContent = '✓ Combined report sent';
+    statusEl.textContent = '✓ All 6 reports sent in one email';
     statusEl.className   = 'report-status success';
   } catch (err) {
     console.error('Report error:', err);
@@ -302,7 +318,7 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
   // Pre-compute jittered positions so the viewport bbox covers the jittered dots
   const jittered = locatedTraps.map(trap => {
     const rand  = seededRand(trap.id);
-    const miles = 1 + rand() * 4;
+    const miles = 0.5 + rand() * 0.5;
     const angle = rand() * Math.PI * 2;
     return {
       trap,
@@ -384,15 +400,21 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
     y: dstY + (latToTileY(lat, zoom) - fty0) / (fty1 - fty0) * dstH,
   });
 
-  // Draw dots at pre-computed jittered positions
+  // Convert jittered geo positions to pixels, then push overlapping dots apart
+  const r    = 10;
+  const dots = jittered.map(({ trap, jLat, jLon }) => {
+    const { x, y } = geoToPx(jLat, jLon);
+    return { trap, x, y };
+  });
+  separateDots(dots, r * 2 + 3, 80);
+
+  // Draw dots at separated pixel positions
   ctx.save();
   ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
 
-  for (const { trap, jLat, jLon } of jittered) {
-    const { x: px, y: py } = geoToPx(jLat, jLon);
+  for (const { trap, x: px, y: py } of dots) {
     const count = trapAtWeek(trap, latestWk);
     const col   = colorForCount(count);
-    const r     = 10;
 
     ctx.beginPath(); ctx.arc(px, py, r + 2, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
@@ -733,6 +755,28 @@ function drawFooter(ctx, canvasH) {
     'Delta traps checked weekly by Valley Ag scouting staff  ·  Spray decisions require adviser consultation',
     24, canvasH - 14
   );
+}
+
+// Iterative dot separation — pushes overlapping circles apart in pixel space.
+// minDist = minimum center-to-center distance (typically 2*r + gap).
+function separateDots(dots, minDist, iterations = 80) {
+  for (let k = 0; k < iterations; k++) {
+    for (let i = 0; i < dots.length; i++) {
+      for (let j = i + 1; j < dots.length; j++) {
+        const dx   = dots[j].x - dots[i].x;
+        const dy   = dots[j].y - dots[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        if (dist < minDist) {
+          const push = (minDist - dist) / 2;
+          const nx = dx / dist, ny = dy / dist;
+          dots[i].x -= nx * push;
+          dots[i].y -= ny * push;
+          dots[j].x += nx * push;
+          dots[j].y += ny * push;
+        }
+      }
+    }
+  }
 }
 
 // Seeded pseudo-random generator (LCG) — same trap ID always gives same jitter.
