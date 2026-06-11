@@ -252,12 +252,24 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
     ctx.textAlign = 'left'; return;
   }
 
-  const lats   = locatedTraps.map(t => t.lat);
-  const lons   = locatedTraps.map(t => t.lon);
+  // Pre-compute jittered positions so the viewport bbox covers the jittered dots
+  const jittered = locatedTraps.map(trap => {
+    const rand  = seededRand(trap.id);
+    const miles = 1 + rand() * 4;
+    const angle = rand() * Math.PI * 2;
+    return {
+      trap,
+      jLat: trap.lat + (miles * Math.cos(angle)) / 69,
+      jLon: trap.lon + (miles * Math.sin(angle)) / (69 * Math.cos(trap.lat * Math.PI / 180)),
+    };
+  });
+
+  const lats   = jittered.map(j => j.jLat);
+  const lons   = jittered.map(j => j.jLon);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const latSpan = maxLat - minLat || 0.02, lonSpan = maxLon - minLon || 0.02;
-  const latPad  = latSpan * 0.28 + 0.010, lonPad = lonSpan * 0.28 + 0.010;
+  const latSpan = maxLat - minLat || 0.12, lonSpan = maxLon - minLon || 0.12;
+  const latPad  = latSpan * 0.30 + 0.025, lonPad = lonSpan * 0.30 + 0.025;
   const vMinLat = minLat - latPad, vMaxLat = maxLat + latPad;
   const vMinLon = minLon - lonPad, vMaxLon = maxLon + lonPad;
 
@@ -325,18 +337,11 @@ async function drawMapSection(ctx, traps, title, x, y, w, h) {
     y: dstY + (latToTileY(lat, zoom) - fty0) / (fty1 - fty0) * dstH,
   });
 
-  // Draw dots — positions jittered 1-5 miles to obscure exact farm locations
+  // Draw dots at pre-computed jittered positions
   ctx.save();
   ctx.beginPath(); ctx.rect(dstX, dstY, dstW, dstH); ctx.clip();
 
-  for (const trap of locatedTraps) {
-    // Deterministic jitter seeded by trap ID so reports are reproducible
-    const rand  = seededRand(trap.id);
-    const miles = 1 + rand() * 4;
-    const angle = rand() * Math.PI * 2;
-    const jLat  = trap.lat + (miles * Math.cos(angle)) / 69;
-    const jLon  = trap.lon + (miles * Math.sin(angle)) / (69 * Math.cos(trap.lat * Math.PI / 180));
-
+  for (const { trap, jLat, jLon } of jittered) {
     const { x: px, y: py } = geoToPx(jLat, jLon);
     const count = trapAtWeek(trap, latestWk);
     const col   = colorForCount(count);
