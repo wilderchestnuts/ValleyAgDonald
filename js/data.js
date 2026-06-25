@@ -14,8 +14,22 @@ const REGIONS = [
 // Populated from Excel uploads; starts empty
 const SEASON_WEEKS = [];
 
-// ── Primary loader — restores from localStorage if available ─────────────────
+// ── Primary loader — fetches the shared upload from the server so every
+//    visitor sees the same data; falls back to localStorage if offline ──────
 async function loadTrapData() {
+  try {
+    const resp = await fetch('/api/trap-data');
+    if (resp.ok) {
+      const { traps, weeks } = await resp.json();
+      if (traps && traps.length && weeks && weeks.length) {
+        SEASON_WEEKS.splice(0, SEASON_WEEKS.length, ...weeks);
+        try { localStorage.setItem('dva_trap_data', JSON.stringify({ traps, weeks })); } catch (_) {}
+        return traps;
+      }
+    }
+  } catch (_) {}
+
+  // Offline / server unreachable — fall back to this device's local cache
   try {
     const saved = localStorage.getItem('dva_trap_data');
     if (saved) {
@@ -214,7 +228,7 @@ window.handleExcelUpload = async function(inputEl) {
     allTraps.splice(0, allTraps.length, ...traps);
     window.allTraps = allTraps;
 
-    // ── Persist to localStorage so data survives page refresh ────────────────
+    // ── Persist locally so this device has a fast cache ───────────────────────
     try {
       localStorage.setItem('dva_trap_data', JSON.stringify({
         traps: allTraps,
@@ -222,13 +236,26 @@ window.handleExcelUpload = async function(inputEl) {
       }));
     } catch (_) {}
 
+    // ── Save to the server so every visitor sees this upload ──────────────────
+    let savedForAll = false;
+    try {
+      const saveResp = await fetch('/api/trap-data', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ traps: allTraps, weeks: SEASON_WEEKS }),
+      });
+      savedForAll = saveResp.ok;
+    } catch (_) {}
+
     // ── Re-render dashboard (app.js owns chart destruction) ──────────────────
     if (typeof window.refreshDashboard === 'function') {
       window.refreshDashboard();
     }
 
-    statusEl.textContent = `✓ Loaded ${traps.length} traps from "${file.name}" · ${newDates.length} week(s) of data`;
-    statusEl.className   = 'upload-status success';
+    statusEl.textContent = savedForAll
+      ? `✓ Loaded ${traps.length} traps from "${file.name}" · ${newDates.length} week(s) of data · Saved for all users`
+      : `⚠ Loaded ${traps.length} traps locally, but failed to save for other users — check server storage setup`;
+    statusEl.className = savedForAll ? 'upload-status success' : 'upload-status error';
 
   } catch (err) {
     console.error('Excel upload error:', err);
