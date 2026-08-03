@@ -24,11 +24,19 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // Never let any layer (browser, edge, CDN) cache this endpoint's response —
+  // stale caching here previously caused newly-uploaded weeks to appear missing.
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+
   if (req.method === 'GET') {
     try {
       const blob = await findBlob();
       if (!blob) return res.status(200).json({ traps: [], weeks: [] });
-      const blobResp = await fetch(blob.url);
+      // Cache-bust the blob URL fetch itself — the blob CDN caches by URL, and
+      // a fixed pathname means a stale cached copy can otherwise be served
+      // even right after a fresh overwrite.
+      const bustUrl  = `${blob.url}?t=${blob.uploadedAt ? new Date(blob.uploadedAt).getTime() : Date.now()}`;
+      const blobResp = await fetch(bustUrl, { cache: 'no-store' });
       const data = await blobResp.json();
       return res.status(200).json(data);
     } catch (err) {
@@ -44,10 +52,11 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: 'Request body must include traps[] and weeks[]' });
       }
       await put(BLOB_PATH, JSON.stringify({ traps, weeks }), {
-        access:          'public',
-        addRandomSuffix: false,
-        allowOverwrite:  true,
-        contentType:     'application/json',
+        access:            'public',
+        addRandomSuffix:   false,
+        allowOverwrite:    true,
+        contentType:       'application/json',
+        cacheControlMaxAge: 0,
       });
       return res.status(200).json({ success: true, trapCount: traps.length, weekCount: weeks.length });
     } catch (err) {

@@ -18,7 +18,7 @@ const SEASON_WEEKS = [];
 //    visitor sees the same data; falls back to localStorage if offline ──────
 async function loadTrapData() {
   try {
-    const resp = await fetch('/api/trap-data');
+    const resp = await fetch('/api/trap-data', { cache: 'no-store' });
     if (resp.ok) {
       const { traps, weeks } = await resp.json();
       if (traps && traps.length && weeks && weeks.length) {
