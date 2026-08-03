@@ -65,8 +65,11 @@ function parseHeaderDate(val) {
   // String date formats
   const str = String(val).trim();
 
-  // Generic week labels like "Week 1", "Week 2" — pass through as-is
-  if (/^week\s*\d+$/i.test(str)) return str;
+  // Generic week labels like "Week 1", "Week 2" — zero-pad the number so
+  // plain string sort still orders them correctly past single digits
+  // (unpadded "Week 10" would otherwise sort before "Week 2").
+  const weekMatch = str.match(/^week\s*(\d+)$/i);
+  if (weekMatch) return `Week ${weekMatch[1].padStart(3, '0')}`;
 
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
     const [m, d, y] = str.split('/');
